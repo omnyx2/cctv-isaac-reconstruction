@@ -38,8 +38,20 @@ C:\isaacsim\python.bat main.py --config config/detrac_MVI_40191.yaml
 
 | 시퀀스 | 추적 MOTA | 실시간 | 옆미끄러짐 평균 (운전) | 차량 겹침 (출력) |
 |---|---|---|---|---|
-| MVI_20011 (정류장, 주차열, 보행자) | 0.645 | 24.4 FPS | 0.136 m/s | 0 |
-| MVI_40191 (고속화도로, 양방향) | 0.874 | 24.9 FPS | 0.036 m/s | 1 |
+| MVI_20011 (정류장, 주차열, 보행자) | 0.645 | 24.4 FPS | 0.142 m/s | 0 |
+| MVI_40191 (고속화도로, 양방향) | 0.874 | 24.9 FPS | 0.036 m/s | 0 |
+
+## 위험 장면 탐색 (오프라인)
+
+UA-DETRAC에는 사고 라벨이 없다. 그래서 추적 결과로 아찔한 순간(추돌 위험 TTC, 근접 추종, 급감속, 급차선변경)을 찾는다.
+카메라는 교통 자체로 자동 추정하고, 초점거리를 몰라도 정확한 비율 지표만 쓴다.
+60개 시퀀스에서 상충 기준을 넘은 장면은 12건, 근접 후보는 77건이었다. 직접 확인해 보니 뚜렷한 근접 사고는 거의 없었다.
+
+```
+C:\isaacsim\python.bat tools/cache_detections.py        # 60개 시퀀스 인식 캐시 (약 50분)
+C:\isaacsim\kit\python\python.exe tools/mine_near_misses.py --top 20
+```
+방법과 한계는 TECHNICAL_NOTES 12장, 결과는 `data/results/near_miss/REPORT.md`에 있다.
 
 ## 디렉터리
 
@@ -48,7 +60,8 @@ main.py        앱 진입점
 perception/    영상 → 추적 결과 (YOLO, 흔들림 보정, 인식 프로세스)
 world/         월드 모델 (투영, 필터, 일관성, 차량 운전) — 순수 numpy
 simulation/    Isaac Sim 렌더링 (카메라, 차량, 보행자)
-tools/         캘리브레이션, 변환, 평가 도구
+analysis/      오프라인 분석: 자동 도로 기하, 위험 장면 지표
+tools/         캘리브레이션, 캐시, 평가, 위험 장면 탐색 도구
 config/        시퀀스별 설정, TEMPLATE.yaml
 docs/          문서
 data/          데이터셋·영상·결과 (git 제외)

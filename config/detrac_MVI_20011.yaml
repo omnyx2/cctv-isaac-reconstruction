@@ -6,11 +6,10 @@
 # focal=974px  hfov=52.5deg  camera height=7.59m  pitch_down=15.7deg  reproj_err=0.51px
 #
 # Run:
-#   python tools/detrac_to_video.py MVI_20011
 #   C:\isaacsim\python.bat main.py --config config/detrac_MVI_20011.yaml
 
 video:
-  path: "data/videos/detrac_MVI_20011.mp4"
+  path: "data/UA-DETRAC/train/detrac_1_MVI_20011"   # original JPEG frames
   fps: 25
 
 yolo:

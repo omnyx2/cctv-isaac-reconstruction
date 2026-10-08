@@ -85,7 +85,7 @@ class CCTVDualTracker:
         if not Path(video_path).exists():
             print(f"Video not found: {video_path}")
             return False
-        self.video_player = VideoPlayer(video_path)
+        self.video_player = VideoPlayer(video_path, fps=self.config["video"].get("fps"))
         if not self.video_player.open():
             print("Failed to open video")
             return False
@@ -117,7 +117,8 @@ class CCTVDualTracker:
         if self.perception is None:
             self.perception = PerceptionWorker(
                 self.config["video"]["path"], self.config.get("yolo", {}),
-                stabilize=self.config.get("stabilization", {}).get("enabled", False))
+                stabilize=self.config.get("stabilization", {}).get("enabled", False),
+                fps=self.config["video"].get("fps"))
         self.perception.start()
         return self.perception.results()
 

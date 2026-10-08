@@ -96,6 +96,9 @@ class YOLOTracker:
 
         # Run tracking
         try:
+            # `half` only when requested: passing it at all triggers an ultralytics
+            # deprecation warning on every frame
+            options = {"half": True} if self.half else {}
             results = self.model.track(
                 frame,
                 persist=True,
@@ -103,8 +106,8 @@ class YOLOTracker:
                 classes=self.classes,
                 tracker=self.tracker_config,
                 agnostic_nms=self.agnostic_nms,
-                half=self.half,
-                verbose=False
+                verbose=False,
+                **options
             )
         except Exception as e:
             print(f"Tracking error: {e}")

@@ -37,7 +37,7 @@ _ERROR = "__error__"
 PERCEPTION_THREADS = 4
 
 
-def _process_main(video_path: str, yolo_config: dict, stabilize: bool,
+def _process_main(video_path: str, fps, yolo_config: dict, stabilize: bool,
                   out_queue, stop_event):
     """Entry point of the perception process."""
     try:
@@ -50,7 +50,7 @@ def _process_main(video_path: str, yolo_config: dict, stabilize: bool,
         from perception.video_player import VideoPlayer
         from perception.yolo_tracker import YOLOTracker
 
-        player = VideoPlayer(video_path)
+        player = VideoPlayer(video_path, fps=fps)
         if not player.open():
             raise RuntimeError(f"Perception process could not open {video_path}")
         tracker = YOLOTracker(**yolo_config)
@@ -88,8 +88,10 @@ class PerceptionWorker:
     """Produces PerceptionResults in frame order from a child process."""
 
     def __init__(self, video_path: str, yolo_config: dict, stabilize: bool,
-                 queue_size: int = 4):
+                 queue_size: int = 4, fps=None):
+        """`fps`: capture rate, required when `video_path` is a directory of frames."""
         self.video_path = video_path
+        self.fps = fps
         self.yolo_config = dict(yolo_config)
         self.stabilize = stabilize
         self.queue_size = queue_size
@@ -105,7 +107,7 @@ class PerceptionWorker:
         self._stop = self._ctx.Event()
         self._process = self._ctx.Process(
             target=_process_main, name="perception", daemon=True,
-            args=(self.video_path, self.yolo_config, self.stabilize, self._queue, self._stop))
+            args=(self.video_path, self.fps, self.yolo_config, self.stabilize, self._queue, self._stop))
         self._process.start()
 
     def stop(self):

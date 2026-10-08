@@ -8,8 +8,8 @@
 # Videos must be raw CCTV footage (docs/DATA_POLICY.md).
 
 video:
-  path: "data/videos/<raw_cctv_video>.mp4"   # project-relative
-  fps: 25
+  path: "data/<raw_cctv_frames_dir_or_video>"   # project-relative: original frame folder or raw video file
+  fps: 25                   # capture rate; required for a frame folder (a video file's own rate wins)
 
 yolo:
   model_path: "yolov8n.pt"

@@ -1,4 +1,8 @@
-"""Video Player module for CCTV footage playback."""
+"""Frame source: a video file, or a directory of original image frames.
+
+Reading a dataset's original frames directly (e.g. UA-DETRAC JPEGs) avoids
+re-encoding them into a video, which would add compression loss.
+"""
 
 import cv2
 import numpy as np
@@ -17,12 +21,22 @@ class FrameData:
 
 
 class VideoPlayer:
-    """OpenCV-based video player for CCTV footage."""
+    """
+    Plays a video file, or the image frames of a directory in name order.
 
-    def __init__(self, video_path: str):
+    For a directory, `fps` (the original capture rate) is required since images
+    carry no timing. For a video file the container's frame rate is used and `fps`
+    is only a fallback when the container has none.
+    """
+
+    IMAGE_PATTERNS = ("*.jpg", "*.jpeg", "*.png")
+
+    def __init__(self, video_path: str, fps: Optional[float] = None):
         self.video_path = Path(video_path)
         self.cap: Optional[cv2.VideoCapture] = None
-        self.fps: float = 30.0
+        self._images: Optional[list] = None
+        self.fps: float = fps or 30.0
+        self._fps_override = fps
         self.width: int = 0
         self.height: int = 0
         self.total_frames: int = 0
@@ -35,12 +49,15 @@ class VideoPlayer:
             print(f"Video file not found: {self.video_path}")
             return False
 
+        if self.video_path.is_dir():
+            return self._open_image_directory()
+
         self.cap = cv2.VideoCapture(str(self.video_path))
         if not self.cap.isOpened():
             print(f"Failed to open video: {self.video_path}")
             return False
 
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or self._fps_override or 30.0
         self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -49,15 +66,47 @@ class VideoPlayer:
         print(f"Opened video: {self.width}x{self.height} @ {self.fps:.2f} FPS, {self.total_frames} frames")
         return True
 
+    def _open_image_directory(self) -> bool:
+        if not self._fps_override:
+            print(f"An image directory needs the capture fps: {self.video_path}")
+            return False
+        images = sorted(p for pattern in self.IMAGE_PATTERNS for p in self.video_path.glob(pattern))
+        if not images:
+            print(f"No image frames in {self.video_path}")
+            return False
+        first = cv2.imread(str(images[0]))
+        if first is None:
+            print(f"Failed to read {images[0]}")
+            return False
+        self._images = images
+        self.height, self.width = first.shape[:2]
+        self.total_frames = len(images)
+        self.current_frame = 0
+        self._is_open = True
+        print(f"Opened image frames: {self.width}x{self.height} @ {self.fps:.2f} FPS, "
+              f"{self.total_frames} frames ({self.video_path})")
+        return True
+
     def close(self):
         """Release video resources."""
         if self.cap is not None:
             self.cap.release()
-            self._is_open = False
+        self._is_open = False
 
     def read_frame(self) -> Optional[FrameData]:
-        """Read the next frame from video."""
-        if not self._is_open or self.cap is None:
+        """Read the next frame."""
+        if not self._is_open:
+            return None
+        if self._images is not None:
+            if self.current_frame >= len(self._images):
+                return None
+            frame = cv2.imread(str(self._images[self.current_frame]))
+            if frame is None:
+                return None
+            self.current_frame += 1
+            return FrameData(frame=frame, frame_id=self.current_frame,
+                             timestamp_ms=(self.current_frame - 1) * 1000.0 / self.fps, fps=self.fps)
+        if self.cap is None:
             return None
 
         ret, frame = self.cap.read()

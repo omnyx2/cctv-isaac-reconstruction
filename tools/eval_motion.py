@@ -17,6 +17,7 @@ Usage (Isaac Sim python for the first run, so YOLO uses CUDA torch):
 """
 
 import argparse
+import re
 import pickle
 import sys
 from collections import defaultdict
@@ -39,13 +40,19 @@ def compute_frame_transforms(config, frames):
     from perception.video_player import VideoPlayer
     from perception.stabilizer import CameraStabilizer
 
-    player = VideoPlayer(str(PROJECT_ROOT / config["video"]["path"]))
+    player = VideoPlayer(str(PROJECT_ROOT / config["video"]["path"]), fps=config["video"].get("fps"))
     player.open()
     stabilizer = CameraStabilizer()
     transforms = [stabilizer.estimate(f.frame, [box for _, box, _ in detections]).copy()
                   for f, detections in zip(player.frames(), frames)]
     player.close()
     return transforms
+
+
+def cache_name(video_path: str) -> str:
+    """Cache key shared with tools/cache_detections.py: detrac_<SEQ> for UA-DETRAC."""
+    match = re.search(r"(MVI_\d+)", Path(video_path).name)
+    return f"detrac_{match.group(1)}" if match else Path(video_path).stem
 
 
 def load_detections(config, cache_path: Path):
@@ -60,7 +67,7 @@ def load_detections(config, cache_path: Path):
     from perception.video_player import VideoPlayer
     from perception.yolo_tracker import YOLOTracker
 
-    player = VideoPlayer(str(PROJECT_ROOT / config["video"]["path"]))
+    player = VideoPlayer(str(PROJECT_ROOT / config["video"]["path"]), fps=config["video"].get("fps"))
     player.open()
     tracker = YOLOTracker(**config["yolo"])
     tracker.load_model()
@@ -149,7 +156,7 @@ def main():
     args = parser.parse_args()
 
     config = yaml.safe_load(open(args.config))
-    cache_path = PROJECT_ROOT / "data" / "cache" / (Path(config["video"]["path"]).stem + "_detections.pkl")
+    cache_path = PROJECT_ROOT / "data" / "cache" / f"{cache_name(config['video']['path'])}_detections.pkl"
     cache = load_detections(config, cache_path)
     perceived, driven, fps, stats = run(config, cache)
     summarize(perceived, fps, "perceived (filtered tracking, placed directly)")
