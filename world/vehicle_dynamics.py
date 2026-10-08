@@ -18,12 +18,11 @@ Pure numpy, no Isaac Sim dependency (used by main.py and tools/eval_motion.py).
 """
 
 from dataclasses import dataclass
-import itertools
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
-from sync.scene_consistency import dimensions, footprint_corners, penetration
+from world.scene_consistency import dimensions, resolve_overlaps
 
 SEPARATION_MARGIN = 0.1   # m clearance left between separated footprints
 SEPARATION_PASSES = 5
@@ -69,7 +68,7 @@ class DrivenPose:
     class_name: str
     x: float
     y: float
-    yaw: float
+    heading: float
     speed: float
     steer: float
     target_error: float     # m, distance to the perceived position this frame
@@ -233,50 +232,21 @@ class FleetDriver:
           - a pedestrian always yields to a vehicle
         """
         def mobility(p: DrivenPose, axis: np.ndarray) -> Tuple[float, np.ndarray]:
-            """(weight, direction it may move along `axis`)."""
             if p.class_name == "person" or not p.driven:
                 return 1e3, axis
             if p.speed < self.gains.stationary_speed:
                 return 1.0, axis
-            heading = np.array([np.cos(p.yaw), np.sin(p.yaw)])
+            heading = np.array([np.cos(p.heading), np.sin(p.heading)])
             along = float(axis @ heading)
             return (abs(along), heading * np.sign(along)) if abs(along) > 0.2 else (0.0, axis)
 
-        for _ in range(SEPARATION_PASSES):
-            moved = False
-            for a, b in itertools.combinations(poses, 2):
-                if a.class_name == b.class_name == "person":
-                    continue
-                # Broad phase on circumscribed circles (half diagonals)
-                ra = np.hypot(*dimensions(a.class_name)[:2]) / 2
-                rb = np.hypot(*dimensions(b.class_name)[:2]) / 2
-                if np.hypot(a.x - b.x, a.y - b.y) > ra + rb:
-                    continue
-                hit = penetration(footprint_corners(a.x, a.y, a.yaw, a.class_name),
-                                  footprint_corners(b.x, b.y, b.yaw, b.class_name))
-                if hit is None:
-                    continue
-                depth, axis = hit
-                wa, da = mobility(a, -axis)
-                wb, db = mobility(b, axis)
-                if wa + wb == 0.0:
-                    continue
-                # Moving along a direction d covers (d . axis) of the needed depth
-                ca, cb = abs(float(da @ axis)), abs(float(db @ axis))
-                need = depth + SEPARATION_MARGIN
-                for pose, w, d, c in ((a, wa, da, ca), (b, wb, db, cb)):
-                    if w == 0.0 or c < 1e-3:
-                        continue
-                    shift = need * w / (wa + wb) / c
-                    pose.x += d[0] * shift
-                    pose.y += d[1] * shift
-                    follower = self._followers.get(pose.track_id)
-                    if follower is not None and pose.driven:
-                        follower.model.s.x, follower.model.s.y = pose.x, pose.y
-                self.separations += 1
-                moved = True
-            if not moved:
-                break
+        def write_back(p: DrivenPose):
+            follower = self._followers.get(p.track_id)
+            if follower is not None and p.driven:
+                follower.model.s.x, follower.model.s.y = p.x, p.y
+
+        self.separations += resolve_overlaps(poses, mobility, on_move=write_back,
+                                             passes=SEPARATION_PASSES, margin=SEPARATION_MARGIN)
 
     def reset(self):
         self._followers.clear()

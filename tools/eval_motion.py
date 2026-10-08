@@ -1,20 +1,22 @@
-"""Measure trajectory continuity of the mapping + dynamic logic pipeline.
+"""Measure trajectory quality of the world model (world/pipeline.py).
 
-YOLO detections are cached on first run (data/cache/), so the dynamic logic can be
-iterated on quickly without Isaac Sim.
+YOLO detections and camera-motion transforms are cached on first run (data/cache/),
+so the world model can be iterated on quickly without Isaac Sim. Both the perceived
+trajectories (filtered tracking) and the driven ones (bicycle model) are reported.
 
-Metrics (per vehicle, per frame, in world space):
-  - heading change |dθ| (deg/frame): mean and 99th percentile, split into
-    moving vs slow (< 1 m/s) vehicles
+Metrics (per object, per frame, in world space):
+  - heading change |dθ| (deg/frame): mean and 99th percentile, moving vs slow
   - yaw rate over 90 deg/s: fraction of frames (a car cannot turn that fast)
-  - position jitter: mean |second difference| of position (m), i.e. acceleration noise
+  - position jitter: mean |second difference| of position (m)
+  - sideways slip (m/s): velocity perpendicular to the heading (vehicles)
+  - error vs perceived (m): driven position vs perceived position
+  - scene consistency: overlaps (phantom collisions) before/after resolution
 
 Usage (Isaac Sim python for the first run, so YOLO uses CUDA torch):
     C:\\isaacsim\\python.bat tools/eval_motion.py --config config/detrac_MVI_20011.yaml
 """
 
 import argparse
-import itertools
 import pickle
 import sys
 from collections import defaultdict
@@ -26,18 +28,16 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from sync.coordinate_mapper import CoordinateMapper  # noqa: E402
-from sync.dynamic_logic import DynamicLogic  # noqa: E402
-from sync.world_tracker import Detection, WorldTracker  # noqa: E402
-from sync.scene_consistency import footprint_corners, penetration  # noqa: E402
-from simulation.vehicle_dynamics import FleetDriver  # noqa: E402
+from world.pipeline import WorldPipeline  # noqa: E402
+from world.scene_consistency import count_overlaps  # noqa: E402
+from world.world_tracker import Detection  # noqa: E402
 
 
 def compute_frame_transforms(config, frames):
     """Per-frame camera motion compensation transforms (current -> reference),
     with vehicle boxes excluded from feature matching as in main.py."""
-    from real_world.video_player import VideoPlayer
-    from real_world.stabilizer import CameraStabilizer
+    from perception.video_player import VideoPlayer
+    from perception.stabilizer import CameraStabilizer
 
     player = VideoPlayer(str(PROJECT_ROOT / config["video"]["path"]))
     player.open()
@@ -57,8 +57,8 @@ def load_detections(config, cache_path: Path):
             cache_path.write_bytes(pickle.dumps(cache))
         return cache
 
-    from real_world.video_player import VideoPlayer
-    from real_world.yolo_tracker import YOLOTracker
+    from perception.video_player import VideoPlayer
+    from perception.yolo_tracker import YOLOTracker
 
     player = VideoPlayer(str(PROJECT_ROOT / config["video"]["path"]))
     player.open()
@@ -78,69 +78,35 @@ def load_detections(config, cache_path: Path):
     return cache
 
 
-def build_pipeline(config, fps, size):
-    mapper = CoordinateMapper(image_width=size[0], image_height=size[1], fps=fps)
-    points = config["mapping"]["calibration_points"]
-    mapper.calibrate_from_points([p[0] for p in points], [p[1][:2] for p in points])
-    dl_cfg = dict(config.get("dynamic_logic", {}))
-    dl_cfg.pop("enabled", None)
-    road_heading = np.radians(config["mapping"].get("road_heading_deg", 90.0))
-    return mapper, DynamicLogic(fps=fps, default_heading=road_heading, **dl_cfg)
-
-
-def build_world_tracker(config, fps, size):
-    mapper, dynamic_logic = build_pipeline(config, fps, size)
-    camera = config.get("simulation", {}).get("camera") or {}
-    return WorldTracker(mapper, dynamic_logic, size, camera.get("position"))
-
-
-def count_overlaps(poses) -> int:
-    """Overlapping footprint pairs (person-person excluded); poses need x, y, yaw/heading."""
-    items = [(p.class_name, footprint_corners(p.x, p.y, getattr(p, "yaw", getattr(p, "heading", 0.0)),
-                                              p.class_name)) for p in poses]
-    count = 0
-    for (ca, a), (cb, b) in itertools.combinations(items, 2):
-        if ca == cb == "person":
-            continue
-        if penetration(a, b) is not None:
-            count += 1
-    return count
-
-
 def run(config, cache):
     """
-    Replays cached detections through the same WorldTracker (perception) and
-    FleetDriver (vehicle dynamics) that main.py uses.
+    Replays cached detections through the same WorldPipeline main.py uses.
 
     Returns (perceived tracks, driven tracks, fps, stats); tracks map
     id -> [(frame, x, y, heading, speed, class, target_error)].
     """
     fps = cache["fps"]
-    world = build_world_tracker(config, fps, cache["size"])
-    fleet = FleetDriver(fps)
+    pipeline = WorldPipeline(config, fps, cache["size"])
     stabilize = config.get("stabilization", {}).get("enabled", False)
 
     perceived, driven = defaultdict(list), defaultdict(list)
     residual_perceived = residual_driven = 0
     for frame_id, detections in enumerate(cache["frames"]):
-        if stabilize:
-            world.mapper.set_frame_transform(cache["transforms"][frame_id])
-        objects = world.step([Detection(tid, bbox, name) for tid, bbox, name in detections])
-        poses = fleet.step(objects)
-        residual_perceived += world.residual_overlaps(objects)
+        objects, poses = pipeline.step(
+            [Detection(tid, bbox, name) for tid, bbox, name in detections],
+            cache["transforms"][frame_id] if stabilize else None)
+        residual_perceived += count_overlaps(objects)
         residual_driven += count_overlaps(poses)
         for o in objects:
             perceived[o.track_id].append((frame_id, o.x, o.y, o.heading, np.hypot(o.vx, o.vy),
                                           o.class_name, 0.0))
         for p in poses:
-            driven[p.track_id].append((frame_id, p.x, p.y, p.yaw, p.speed,
+            driven[p.track_id].append((frame_id, p.x, p.y, p.heading, p.speed,
                                        p.class_name if p.driven else "undriven:" + p.class_name,
                                        p.target_error))
-    stats = dict(world.stats)
+    stats = dict(pipeline.stats)
     stats["residual_overlaps"] = residual_perceived
     stats["residual_overlaps_driven"] = residual_driven
-    stats["dynamics_snaps"] = fleet.total_snaps
-    stats["dynamics_separations"] = fleet.separations
     return perceived, driven, fps, stats
 
 

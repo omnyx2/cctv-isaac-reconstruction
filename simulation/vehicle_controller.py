@@ -4,7 +4,7 @@ from typing import Dict, Optional
 from dataclasses import dataclass
 import numpy as np
 
-from sync.scene_consistency import dimensions
+from world.scene_consistency import dimensions
 
 # pxr is imported lazily: it is only importable after SimulationApp has started,
 # and this module is imported before that happens.
@@ -34,7 +34,7 @@ class VehicleController:
     - Removing vehicles
     """
 
-    # Sizes come from sync.scene_consistency so the drawn boxes are exactly the
+    # Sizes come from world.scene_consistency so the drawn boxes are exactly the
     # footprints that the overlap (phantom collision) checks use
     VEHICLE_COLORS = {
         "car": (0.15, 0.45, 0.85),
@@ -66,10 +66,6 @@ class VehicleController:
         self._root_ops: Dict[str, tuple] = {}
         # Front wheel steering (rotateZ) ops per vehicle
         self._steer_ops: Dict[int, tuple] = {}
-
-    def set_stage(self, stage):
-        """Set USD stage."""
-        self._stage = stage
 
     def spawn_vehicle(
         self,
@@ -124,7 +120,7 @@ class VehicleController:
         at the dynamics model's wheelbase. Returns the front wheels' steer ops.
         """
         from pxr import UsdGeom, Gf
-        from simulation.vehicle_dynamics import params_for
+        from world.vehicle_dynamics import params_for
 
         length, width, height = dimensions(vehicle_type)
         color = self.VEHICLE_COLORS.get(vehicle_type, self.VEHICLE_COLORS["car"])
@@ -324,14 +320,6 @@ class VehicleController:
         self._person_rigs.pop(vehicle_id, None)
         del self._vehicles[vehicle_id]
         return True
-
-    def get_vehicle(self, vehicle_id: int) -> Optional[SimVehicle]:
-        """Get vehicle by ID."""
-        return self._vehicles.get(vehicle_id)
-
-    def get_all_vehicles(self) -> Dict[int, SimVehicle]:
-        """Get all vehicles."""
-        return dict(self._vehicles)
 
     def cleanup_stale(self, active_ids: set):
         """Remove vehicles not in active set."""

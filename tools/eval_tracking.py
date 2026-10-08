@@ -20,7 +20,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from real_world.yolo_tracker import YOLOTracker  # noqa: E402
+from perception.yolo_tracker import YOLOTracker  # noqa: E402
 from tools.detrac_to_video import find_sequence_dir  # noqa: E402
 
 
@@ -71,7 +71,7 @@ def greedy_match(gt_items, pred_items, threshold):
 def main():
     parser = argparse.ArgumentParser(description="Evaluate YOLO tracking on UA-DETRAC")
     parser.add_argument("sequence", help="Sequence name, e.g. MVI_20011")
-    parser.add_argument("--config", default=str(PROJECT_ROOT / "config" / "settings.yaml"))
+    parser.add_argument("--config", default=str(PROJECT_ROOT / "config" / "detrac_MVI_20011.yaml"))
     parser.add_argument("--confidence", type=float, default=None, help="Override YOLO confidence")
     parser.add_argument("--model", default=None, help="Override YOLO model path")
     parser.add_argument("--iou", type=float, default=0.5)

@@ -4,16 +4,16 @@ detections (image) -> ground projection -> dynamic logic -> physical consistency
 -> world objects for the simulation.
 """
 
-import itertools
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from sync.coordinate_mapper import CoordinateMapper
-from sync.dynamic_logic import DynamicLogic
-from sync.scene_consistency import dimensions, footprint_corners, half_extent_along, penetration
+from world.coordinate_mapper import CoordinateMapper
+from world.dynamic_logic import DynamicLogic
+from world.scene_consistency import (candidate_pairs, count_overlaps, footprint_corners,
+                                     half_extent_along, penetration, resolve_overlaps)
 
 # A bbox this close to the image edge is truncated: its bottom edge is not the
 # vehicle's road contact point
@@ -192,17 +192,17 @@ class WorldTracker:
             proportion to each object's position uncertainty
         """
         dl = self.dynamic_logic
+        ordered = [objects[t] for t in sorted(objects)]
 
-        def corners(o):
-            return footprint_corners(o.x, o.y, o.heading, o.class_name)
-
-        for a, b in self._candidate_pairs(objects):
+        for i, j in candidate_pairs(ordered):
+            oa, ob = ordered[i], ordered[j]
+            a, b = oa.track_id, ob.track_id
             if a not in objects or b not in objects:
                 continue
-            oa, ob = objects[a], objects[b]
             if oa.class_name == "person" and ob.class_name == "person":
                 continue
-            if penetration(corners(oa), corners(ob)) is None:
+            if penetration(footprint_corners(oa.x, oa.y, oa.heading, oa.class_name),
+                           footprint_corners(ob.x, ob.y, ob.heading, ob.class_name)) is None:
                 continue
             self.stats["raw_overlaps"] += 1
             if oa.observed and ob.observed:
@@ -219,55 +219,21 @@ class WorldTracker:
             self._class_votes.pop(stale, None)
             self.stats["dropped_stale_coasting"] += 1
 
-        # Shallow overlaps: separate along the minimum translation vector
-        for _ in range(SEPARATION_PASSES):
-            moved = False
-            for a, b in self._candidate_pairs(objects):
-                oa, ob = objects[a], objects[b]
-                if oa.class_name == "person" and ob.class_name == "person":
-                    continue
-                hit = penetration(corners(oa), corners(ob))
-                if hit is None:
-                    continue
-                depth, axis = hit
-                wa, wb = self._mobility(oa, axis), self._mobility(ob, axis)
-                share = (depth + SEPARATION_MARGIN) / (wa + wb)
-                oa.x, oa.y = oa.x - axis[0] * share * wa, oa.y - axis[1] * share * wa
-                ob.x, ob.y = ob.x + axis[0] * share * wb, ob.y + axis[1] * share * wb
-                self.stats["separations"] += 1
-                moved = True
-            if not moved:
-                break
+        # Remaining overlaps are position error: minimum translation, shared in
+        # proportion to each object's position variance along the separating axis
+        self.stats["separations"] += resolve_overlaps(
+            [objects[t] for t in sorted(objects)], self._mobility,
+            passes=SEPARATION_PASSES, margin=SEPARATION_MARGIN)
 
-    @staticmethod
-    def _candidate_pairs(objects: Dict[int, WorldObject]):
-        """Broad phase: pairs whose bounding circles touch (SAT runs only on these)."""
-        ids = sorted(objects)
-        if len(ids) < 2:
-            return []
-        xy = np.array([[objects[t].x, objects[t].y] for t in ids])
-        radius = np.array([np.hypot(*dimensions(objects[t].class_name)[:2]) / 2 for t in ids])
-        dist = np.linalg.norm(xy[:, None, :] - xy[None, :, :], axis=-1)
-        close = dist < radius[:, None] + radius[None, :]
-        i, j = np.nonzero(np.triu(close, k=1))
-        return [(ids[a], ids[b]) for a, b in zip(i, j)]
-
-    def _mobility(self, obj: WorldObject, axis: np.ndarray) -> float:
-        """How much an object may be moved along `axis`: its position variance there.
+    def _mobility(self, obj: WorldObject, axis: np.ndarray) -> Tuple[float, np.ndarray]:
+        """Position variance along `axis` (more uncertain = moves more); free direction.
         A pedestrian always yields to a vehicle."""
         if obj.class_name == "person":
-            return 1e6
+            return 1e6, axis
         cov = self.dynamic_logic.position_covariance(obj.track_id)
-        return float(axis @ cov @ axis) + 1e-6 if cov is not None else 1.0
+        return (float(axis @ cov @ axis) + 1e-6 if cov is not None else 1.0), axis
 
-    def residual_overlaps(self, objects: List[WorldObject]) -> int:
+    @staticmethod
+    def residual_overlaps(objects: List[WorldObject]) -> int:
         """Overlapping pairs left in the output (should be 0)."""
-        count = 0
-        for oa, ob in itertools.combinations(objects, 2):
-            if oa.class_name == "person" and ob.class_name == "person":
-                continue
-            if penetration(footprint_corners(oa.x, oa.y, oa.heading, oa.class_name),
-                           footprint_corners(ob.x, ob.y, ob.heading, ob.class_name)) is not None:
-                count += 1
-        return count
-
+        return count_overlaps(objects)

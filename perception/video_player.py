@@ -3,7 +3,7 @@
 import cv2
 import numpy as np
 from pathlib import Path
-from typing import Optional, Tuple, Generator
+from typing import Generator, Optional
 from dataclasses import dataclass
 
 

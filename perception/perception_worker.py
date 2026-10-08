@@ -16,8 +16,8 @@ from typing import Optional
 
 import numpy as np
 
-from real_world.video_player import FrameData
-from real_world.yolo_tracker import TrackingResult
+from perception.video_player import FrameData
+from perception.yolo_tracker import TrackingResult
 
 
 @dataclass
@@ -46,9 +46,9 @@ def _process_main(video_path: str, yolo_config: dict, stabilize: bool,
         cv2.setNumThreads(PERCEPTION_THREADS)
         torch.set_num_threads(PERCEPTION_THREADS)
 
-        from real_world.stabilizer import CameraStabilizer
-        from real_world.video_player import VideoPlayer
-        from real_world.yolo_tracker import YOLOTracker
+        from perception.stabilizer import CameraStabilizer
+        from perception.video_player import VideoPlayer
+        from perception.yolo_tracker import YOLOTracker
 
         player = VideoPlayer(video_path)
         if not player.open():

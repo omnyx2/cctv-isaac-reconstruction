@@ -42,7 +42,6 @@ mapping:
     - [[620, 175], [3.5, 21]]
 
 dynamic_logic:
-  enabled: true
   process_noise: 2.0        # acceleration noise std (m/s^2), constant velocity model
   measurement_noise: 0.5    # fallback position variance (m^2)
   prediction_steps: 5

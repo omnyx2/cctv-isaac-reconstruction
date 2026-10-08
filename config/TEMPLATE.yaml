@@ -1,0 +1,66 @@
+# Config template: copy to config/<dataset>_<sequence>.yaml and fill in.
+#
+# Every sequence needs its own calibration (each camera has its own pose):
+#   1. python tools/detrac_to_video.py <SEQ>      (or use a raw CCTV video directly)
+#   2. pick 4 road points with known geometry (lane width, dash pattern) and run
+#      python tools/calibrate_camera.py --size W H --points "px,py:wx,wy" ...
+#   3. paste its mapping/simulation.camera output below
+# Videos must be raw CCTV footage (docs/DATA_POLICY.md).
+
+video:
+  path: "data/videos/<raw_cctv_video>.mp4"   # project-relative
+  fps: 25
+
+yolo:
+  model_path: "yolov8n.pt"
+  confidence: 0.25          # best MOTA on UA-DETRAC (tools/eval_tracking.py)
+  classes: [0, 2, 5, 7]     # COCO: person, car, bus, truck
+  tracker_config: "bytetrack.yaml"
+  # agnostic_nms: true      # default; one object cannot be both "car" and "truck"
+  # half: false             # FP16 gave no speedup for yolov8n
+
+simulation:
+  vehicle_dynamics: true    # drive vehicles with the bicycle model (false = place at perceived pose)
+  # headless: false         # true = no Isaac Sim window (OpenCV sim view only)
+  ground_size: 200.0        # m
+  camera:                   # from tools/calibrate_camera.py
+    position: [0.0, -20.0, 8.0]   # m, world frame (X lateral, Y forward, Z up)
+    pitch_deg: 15.0               # down from horizontal
+    yaw_deg: 0.0
+    focal_px: 1000
+    image_size: [960, 540]
+  lane_lines_x: [0.0, 3.5]  # m, lane boundaries drawn on the ground (visual only)
+
+mapping:
+  # [[pixel_x, pixel_y], [world_x, world_y]], 4+ points on the road plane (required)
+  calibration_points:
+    - [[0, 0], [0, 0]]
+    - [[0, 0], [3.5, 0]]
+    - [[0, 0], [0, 20]]
+    - [[0, 0], [3.5, 20]]
+  # road_heading_deg: 90.0  # travel direction for new objects before any flow is learned
+
+dynamic_logic:              # world/dynamic_logic.py (all optional, defaults shown)
+  process_noise: 2.0        # acceleration noise std (m/s^2)
+  measurement_noise: 0.5    # fallback position variance (m^2)
+  pixel_noise: 1.0          # detection noise sigma = pixel_noise + ratio * bbox size (px)
+  pixel_noise_ratio: 0.03
+  min_moving_speed: 1.5     # m/s; slower motion never sets a vehicle's heading
+  max_yaw_rate_deg: 60.0
+  heading_gain: 0.3
+  coast_time: 0.6           # s bridged through missed detections
+  handoff_distance: 3.0     # m; a new track ID inherits a lost track this close
+  flow_cell_size: 2.0       # m; local flow field resolution
+  motion_window: 1.0        # s of net displacement deciding moving vs stopped
+  anchor_smoothing: 0.05
+  outlier_gate: 13.8        # chi-square 99.9 %, 2 DOF
+  # pedestrian: {min_moving_speed: 0.4, max_yaw_rate_deg: 180.0}
+
+stabilization:
+  enabled: true             # camera motion compensation against the first frame
+
+display:
+  show_real: true
+  show_sim: true
+  window_width: 960
+  window_height: 540

@@ -1,6 +1,6 @@
 """Isaac Sim Scene Manager for CCTV simulation."""
 
-from typing import Optional, Tuple
+from typing import Optional
 import numpy as np
 
 # Isaac Sim imports (only available when running with Isaac Sim Python)
@@ -72,9 +72,7 @@ class SceneManager:
 
             # Import after SimulationApp is created
             import omni.usd
-            from pxr import Gf, UsdGeom, UsdLux
             from omni.isaac.core import World
-            from omni.isaac.core.utils.stage import add_reference_to_stage
 
             # Create world
             self._world = World(stage_units_in_meters=1.0)
@@ -244,45 +242,9 @@ class SceneManager:
             print(f"Render error: {e}")
             return None
 
-    def get_camera_pose(self) -> Tuple[np.ndarray, np.ndarray]:
-        """Get camera position and orientation."""
-        position = np.array([0, 0, self.camera_height])
-        orientation = np.array([1, 0, 0, 0])  # Quaternion (w, x, y, z)
-        return position, orientation
-
-    def set_camera_pose(
-        self,
-        position: Optional[np.ndarray] = None,
-        look_at: Optional[np.ndarray] = None
-    ):
-        """Set camera position and look-at target."""
-        if self._camera_prim is None:
-            return
-
-        from pxr import UsdGeom, Gf
-
-        if position is not None:
-            xform = UsdGeom.Xformable(self._camera_prim)
-            ops = xform.GetOrderedXformOps()
-            for op in ops:
-                if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
-                    op.Set(Gf.Vec3d(*position))
-                    break
-
     def shutdown(self):
         """Shutdown Isaac Sim."""
         if self._simulation_app is not None:
             self._simulation_app.close()
             self._simulation_app = None
         self._is_initialized = False
-
-    def is_initialized(self) -> bool:
-        """Check if scene is initialized."""
-        return self._is_initialized
-
-    def __enter__(self):
-        self.initialize()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.shutdown()

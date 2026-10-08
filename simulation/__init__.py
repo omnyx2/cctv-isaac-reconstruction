@@ -1,4 +1,5 @@
-from .scene_manager import SceneManager
-from .vehicle_controller import VehicleController
+"""Isaac Sim rendering (only this package depends on Isaac Sim / USD).
 
-__all__ = ["SceneManager", "VehicleController"]
+scene_manager       SimulationApp, stage, calibrated CCTV camera, RGB capture
+vehicle_controller  USD proxies: vehicles with steered wheels, animated pedestrians
+"""

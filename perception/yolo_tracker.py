@@ -3,7 +3,6 @@
 import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple
-from pathlib import Path
 
 try:
     from ultralytics import YOLO

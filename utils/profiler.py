@@ -1,4 +1,4 @@
-"""Per-stage frame timing (main.py --profile)."""
+"""Frame timing: per-stage profiler (main.py --profile) and FPS meter."""
 
 import time
 from collections import defaultdict
@@ -53,3 +53,33 @@ class StageTimer:
             lines.append(f"  {stage:22s} {v.mean():7.1f} {np.percentile(v, 95):7.1f} {v.max():8.1f}{share}")
         lines.append(f"  {'total (main thread)':22s} {total:7.1f}  -> {1000.0 / total:.1f} FPS")
         return "\n".join(lines)
+
+
+class FpsMeter:
+    """Display frame rate (smoothed) and session average."""
+
+    def __init__(self, smoothing: float = 0.9):
+        self.smoothing = smoothing
+        self.frames = 0
+        self._first = None
+        self._last = None
+        self._fps = 0.0
+
+    def tick(self) -> float:
+        """Call once per displayed frame; returns the smoothed FPS."""
+        now = time.perf_counter()
+        if self._first is None:
+            self._first = now
+        elif now > self._last:
+            instant = 1.0 / (now - self._last)
+            self._fps = instant if self._fps == 0.0 else (
+                self.smoothing * self._fps + (1 - self.smoothing) * instant)
+        self._last = now
+        self.frames += 1
+        return self._fps
+
+    @property
+    def average_fps(self) -> float:
+        if self._first is None or self._last <= self._first:
+            return 0.0
+        return (self.frames - 1) / (self._last - self._first)
