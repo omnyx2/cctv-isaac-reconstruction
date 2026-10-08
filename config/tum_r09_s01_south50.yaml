@@ -1,0 +1,44 @@
+# TUM Traffic Accid3nD r09_s01 s050_camera_basler_south_50mm: real accident, contact at 20.0 s of this clip
+#   white van stopped in the left lane since the start of the sequence (traffic swerves around it); a yellow car squeezes between the van and the median barrier, hits the barrier and the van, which is pushed forward
+# Camera fitted to the dataset's 3D labels (tools/export_accident_scenes.py,
+# box fit error 0.051 box heights), local road frame:
+# X right, Y along the road away from the camera, Z up, origin on the road below the image center.
+#
+# Run:
+#   C:\isaacsim\python.bat main.py --config config/tum_r09_s01_south50.yaml
+
+video: {path: 'D:/datasets/TUMTraf-Accid3nD/accident_scenes/r09_s01_south50/images',
+  fps: 25}
+yolo:
+  model_path: yolov8n.pt
+  confidence: 0.25
+  classes: [0, 2, 5, 7]
+  tracker_config: bytetrack.yaml
+simulation:
+  vehicle_dynamics: true
+  ground_size: 400.0
+  camera:
+    position: [2.06, -71.33, 8.14]
+    pitch_deg: 4.2
+    yaw_deg: 1.63
+    focal_px: 8905
+    image_size: [1920, 1200]
+  lane_lines_x: []
+mapping:
+  calibration_points:
+  - - [576.0, 1104.0]
+    - [-2.47, -8.84]
+  - - [1344.0, 1104.0]
+    - [2.96, -9.05]
+  - - [672.0, 720.0]
+    - [-3.68, 22.54]
+  - - [1248.0, 720.0]
+    - [2.42, 22.1]
+stabilization: {enabled: false}
+display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
+vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'llava:7b',
+  interval_s: 2.0, max_side: 672, timeout_s: 60.0}
+accident: {contact_s: 19.98, sequence: r09_s01, camera: s050_camera_basler_south_50mm,
+  description: 'white van stopped in the left lane since the start of the sequence
+    (traffic swerves around it); a yellow car squeezes between the van and the median
+    barrier, hits the barrier and the van, which is pushed forward'}

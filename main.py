@@ -6,6 +6,8 @@ Real CCTV video and its Isaac Sim reconstruction, side by side, in real time:
 
     perception process:  video -> YOLO + ByteTrack -> camera motion estimate
     main process:        world model (world/pipeline.py) -> Isaac Sim render
+    VLM thread:          sampled frames -> vision-language model scene analysis
+                         (optional, config `vlm`; independent of YOLO)
 
 See docs/ARCHITECTURE.md for the structure and docs/TECHNICAL_NOTES.md for the
 algorithms.
@@ -28,6 +30,7 @@ import yaml
 
 from perception.perception_worker import PerceptionResult, PerceptionWorker
 from perception.video_player import VideoPlayer
+from perception.vlm import SceneAnalysis, VLMAnalyzer, create_analyzer
 from perception.yolo_tracker import YOLOTracker
 from simulation.scene_manager import SceneManager
 from simulation.vehicle_controller import VehicleController
@@ -70,6 +73,7 @@ class CCTVDualTracker:
         self.vehicle_controller: Optional[VehicleController] = None
         self.world: Optional[WorldPipeline] = None
         self.perception: Optional[PerceptionWorker] = None
+        self.vlm: Optional[VLMAnalyzer] = None
 
         self._running = False
         self._paused = False
@@ -109,8 +113,25 @@ class CCTVDualTracker:
             print(f"Invalid config: {e}")
             return False
 
+        self._start_vlm()
         print(f"Initialized with video: {size[0]}x{size[1]} @ {fps:.1f} FPS")
         return True
+
+    def _start_vlm(self):
+        """Optional VLM scene analysis; the app runs without it when it is unavailable."""
+        try:
+            self.vlm = create_analyzer(self.config)
+        except ValueError as e:
+            print(f"VLM disabled: {e}")
+            return
+        if self.vlm is None:
+            return
+        if not self.vlm.start():
+            print(f"VLM disabled: {self.vlm.unavailable}")
+            self.vlm = None
+            return
+        print(f"VLM scene analysis on: {self.vlm.client.name} {getattr(self.vlm.client, 'model', '')}, "
+              f"every {self.vlm.interval_s:g} s")
 
     def _start_perception(self):
         """(Re)start perception from the first frame of the video."""
@@ -150,6 +171,7 @@ class CCTVDualTracker:
                     break
 
                 poses = self._process_frame(result)
+                self._update_vlm(result)
                 self._update_simulation(poses)
                 self._show(result)
                 self._handle_key(cv2.waitKey(1) & 0xFF)
@@ -160,6 +182,8 @@ class CCTVDualTracker:
                     results = self._start_perception()
                     self.world.reset()
                     self.vehicle_controller.clear_all()
+                    if self.vlm is not None:
+                        self.vlm.reset()
 
                 next_frame_at = self._pace(next_frame_at, frame_time)
                 self.timer.mark("fps_sleep")
@@ -176,6 +200,23 @@ class CCTVDualTracker:
         _, poses = self.world.step(detections, result.frame_transform)
         self.timer.mark("world_model")
         return poses
+
+    def _update_vlm(self, result: PerceptionResult):
+        """Offer the frame to the VLM (non-blocking) and report finished analyses."""
+        if self.vlm is None:
+            return
+        frame_data = result.frame_data
+        self.vlm.submit(frame_data.frame, frame_data.frame_id, frame_data.timestamp_ms / 1000.0)
+        for analysis in self.vlm.poll():
+            self._report_vlm(analysis)
+        self.timer.mark("vlm_submit")
+
+    def _report_vlm(self, analysis: SceneAnalysis):
+        flag = " ACCIDENT" if analysis.accident else ""
+        print(f"[VLM {analysis.video_time_s:6.1f}s, {analysis.latency_s:.1f}s]{flag} {analysis.summary}")
+        if self.save_dir is not None:
+            with open(self.save_dir / "vlm.jsonl", "a", encoding="utf-8") as f:
+                f.write(analysis.to_json() + "\n")
 
     def _update_simulation(self, poses: List[DrivenPose]):
         for pose in poses:
@@ -200,6 +241,12 @@ class CCTVDualTracker:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             cv2.putText(real_display, f"Frame: {frame_data.frame_id}/{self.video_player.total_frames}",
                         (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
+            if self.vlm is not None and self.vlm.latest is not None:
+                latest = self.vlm.latest
+                color = (0, 0, 255) if latest.accident else (255, 255, 0)
+                text = f"VLM @{latest.video_time_s:.0f}s: {latest.summary}"[:110]
+                cv2.putText(real_display, text, (10, real_display.shape[0] - 15),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
             cv2.imshow(REAL_WINDOW, real_display)
         self.timer.mark("draw_real")
 
@@ -250,6 +297,8 @@ class CCTVDualTracker:
         self._running = False
         if self.perception is not None:
             self.perception.stop()
+        if self.vlm is not None:
+            self.vlm.stop()
         if self.video_player:
             self.video_player.close()
         cv2.destroyAllWindows()

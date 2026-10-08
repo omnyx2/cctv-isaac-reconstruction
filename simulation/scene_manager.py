@@ -3,6 +3,8 @@
 from typing import Optional
 import numpy as np
 
+from simulation.scene_builder import build_scene, show_camera_in_viewport
+
 # Isaac Sim imports (only available when running with Isaac Sim Python)
 try:
     from isaacsim import SimulationApp
@@ -16,9 +18,9 @@ class SceneManager:
     Manages Isaac Sim scene for CCTV simulation.
 
     Handles:
-    - Scene setup (ground plane, camera)
-    - Simulation stepping
-    - Viewport rendering
+    - Starting Isaac Sim (SimulationApp) for the standalone app
+    - Scene setup (simulation/scene_builder.py)
+    - Simulation stepping and capturing the CCTV camera view
     """
 
     def __init__(
@@ -44,7 +46,6 @@ class SceneManager:
         self._stage = None
         self._world = None
         self._camera_prim = None
-        self._ground_prim = None
         self._rgb_annotator = None
         self._is_initialized = False
 
@@ -56,7 +57,7 @@ class SceneManager:
     def initialize(self) -> bool:
         """Initialize Isaac Sim and create scene."""
         if not ISAAC_AVAILABLE:
-            print("Isaac Sim not available: run with C:\isaacsim\python.bat main.py")
+            print("Isaac Sim not available: run with C:\\isaacsim\\python.bat main.py")
             return False
 
         try:
@@ -78,17 +79,10 @@ class SceneManager:
             self._world = World(stage_units_in_meters=1.0)
             self._stage = omni.usd.get_context().get_stage()
 
-            # Create ground plane
-            self._create_ground()
-
-            # Create CCTV camera
-            self._create_camera()
-
-            # Add lighting
-            self._create_lighting()
-
-            # Lane markings
-            self._create_lane_lines()
+            # Ground, calibrated CCTV camera, lights, lane lines (shared with the extension)
+            camera_path = build_scene(self._stage, self.ground_size, self.camera_height,
+                                      self.camera_config, self.lane_lines_x)
+            self._camera_prim = self._stage.GetPrimAtPath(camera_path)
 
             # Show the CCTV camera in the viewport and capture it for the OpenCV window
             self._attach_camera_outputs()
@@ -102,90 +96,10 @@ class SceneManager:
             print(f"Failed to initialize Isaac Sim: {e}")
             return False
 
-    def _create_ground(self):
-        """Create ground plane."""
-        from pxr import UsdGeom, Gf
-
-        # Create ground plane
-        ground_path = "/World/Ground"
-        ground = UsdGeom.Mesh.Define(self._stage, ground_path)
-
-        # Simple quad, extended forward of the camera where the road is visible
-        half = self.ground_size / 2
-        points = [
-            Gf.Vec3f(-half, -half / 2, 0),
-            Gf.Vec3f(half, -half / 2, 0),
-            Gf.Vec3f(half, 1.5 * half, 0),
-            Gf.Vec3f(-half, 1.5 * half, 0),
-        ]
-        ground.CreatePointsAttr(points)
-        ground.CreateFaceVertexCountsAttr([4])
-        ground.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
-
-        # Set color (dark gray road)
-        ground.CreateDisplayColorAttr([(0.08, 0.08, 0.08)])
-
-        self._ground_prim = ground.GetPrim()
-
-    def _create_camera(self):
-        """Create CCTV camera."""
-        from pxr import UsdGeom, Gf
-
-        camera_path = "/World/CCTVCamera"
-        camera = UsdGeom.Camera.Define(self._stage, camera_path)
-
-        xform = UsdGeom.Xformable(camera)
-        xform.ClearXformOpOrder()
-
-        cfg = self.camera_config
-        if cfg:
-            # USD cameras look down -Z with +Y up. Rotating X by (90 - pitch) points the
-            # view along +Y (road forward) tilted down by `pitch`; Z rotation applies yaw.
-            position = cfg["position"]
-            pitch, yaw = cfg.get("pitch_deg", 0.0), cfg.get("yaw_deg", 0.0)
-            image_w, image_h = cfg.get("image_size", [self.width, self.height])
-            horizontal_aperture = 36.0
-            focal_length = cfg["focal_px"] * horizontal_aperture / image_w
-
-            xform.AddTranslateOp().Set(Gf.Vec3d(*position))
-            xform.AddRotateXYZOp().Set(Gf.Vec3d(90.0 - pitch, 0.0, yaw))
-            camera.CreateFocalLengthAttr(focal_length)
-            camera.CreateHorizontalApertureAttr(horizontal_aperture)
-            camera.CreateVerticalApertureAttr(horizontal_aperture * image_h / image_w)
-        else:
-            # Straight down from camera_height (default -Z view direction)
-            xform.AddTranslateOp().Set(Gf.Vec3d(0, 0, self.camera_height))
-            camera.CreateFocalLengthAttr(24.0)
-            camera.CreateHorizontalApertureAttr(36.0)
-
-        camera.CreateClippingRangeAttr(Gf.Vec2f(0.1, 1000.0))
-        self._camera_prim = camera.GetPrim()
-
-    def _create_lane_lines(self):
-        """Draw lane boundaries as thin white strips along +Y."""
-        from pxr import UsdGeom, Gf
-
-        half = self.ground_size / 2
-        length = 2 * half
-        for i, x in enumerate(self.lane_lines_x):
-            line = UsdGeom.Cube.Define(self._stage, f"/World/LaneLines/Line_{i}")
-            line.CreateSizeAttr(1.0)
-            line.CreateDisplayColorAttr([Gf.Vec3f(0.9, 0.9, 0.9)])
-            line_xform = UsdGeom.Xformable(line)
-            line_xform.AddTranslateOp().Set(Gf.Vec3d(x, half / 2, 0.01))
-            line_xform.AddScaleOp().Set(Gf.Vec3f(0.15, length, 0.01))
-
     def _attach_camera_outputs(self):
         """Make the CCTV camera the active viewport and attach an RGB annotator."""
         camera_path = str(self._camera_prim.GetPath())
-
-        try:
-            from omni.kit.viewport.utility import get_active_viewport
-            viewport = get_active_viewport()
-            if viewport is not None:
-                viewport.camera_path = camera_path
-        except Exception as e:
-            print(f"Could not set viewport camera: {e}")
+        show_camera_in_viewport(camera_path)
 
         try:
             import omni.replicator.core as rep
@@ -195,21 +109,6 @@ class SceneManager:
         except Exception as e:
             print(f"RGB capture unavailable, sim view only in Isaac window: {e}")
             self._rgb_annotator = None
-
-    def _create_lighting(self):
-        """Create scene lighting."""
-        from pxr import UsdLux
-
-        # Dome light for ambient
-        dome_path = "/World/DomeLight"
-        dome = UsdLux.DomeLight.Define(self._stage, dome_path)
-        dome.CreateIntensityAttr(300)
-
-        # Distant light for sun
-        sun_path = "/World/SunLight"
-        sun = UsdLux.DistantLight.Define(self._stage, sun_path)
-        sun.CreateIntensityAttr(1500)
-        sun.CreateAngleAttr(0.5)
 
     def step(self, dt: float = 1.0 / 60.0):
         """

@@ -4,12 +4,9 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple
 
-try:
-    from ultralytics import YOLO
-    YOLO_AVAILABLE = True
-except ImportError:
-    YOLO_AVAILABLE = False
-    print("Warning: ultralytics not installed. Run: pip install ultralytics")
+# ultralytics (and torch) are imported when a model is loaded, not with this module:
+# processes that only draw results (the main app, the Omniverse extension) must not
+# need torch, and the perception process may add torch's location to sys.path first.
 
 
 @dataclass
@@ -58,7 +55,8 @@ class YOLOTracker:
         classes: Optional[List[int]] = None,
         tracker_config: str = "bytetrack.yaml",
         agnostic_nms: bool = True,
-        half: bool = False
+        half: bool = False,
+        imgsz: Optional[int] = None
     ):
         self.model_path = model_path
         self.confidence = confidence
@@ -70,13 +68,18 @@ class YOLOTracker:
         # FP16 inference on CUDA (ignored on CPU). Off by default: no speedup measured
         # for yolov8n (inference is ~6 ms; tracking overhead dominates)
         self.half = half
-        self.model: Optional[YOLO] = None
+        # Inference size (px, long side); None = the model default (640). Larger finds
+        # and localizes small far vehicles of wide-angle high-resolution cameras
+        self.imgsz = imgsz
+        self.model = None   # ultralytics.YOLO after load_model()
         self._prev_centers: Dict[int, Tuple[float, float]] = {}
 
     def load_model(self) -> bool:
         """Load YOLO model."""
-        if not YOLO_AVAILABLE:
-            print("YOLO not available. Please install ultralytics.")
+        try:
+            from ultralytics import YOLO
+        except ImportError as e:   # not installed, or one of its dependencies (torch) is missing
+            print(f"YOLO not available ({e}). Install ultralytics (and torch).")
             return False
 
         try:
@@ -99,6 +102,8 @@ class YOLOTracker:
             # `half` only when requested: passing it at all triggers an ultralytics
             # deprecation warning on every frame
             options = {"half": True} if self.half else {}
+            if self.imgsz:
+                options["imgsz"] = self.imgsz
             results = self.model.track(
                 frame,
                 persist=True,

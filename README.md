@@ -25,6 +25,19 @@ C:\isaacsim\python.bat main.py --config config/detrac_MVI_40191.yaml
 
 창에서 `Q` 종료, `Space` 일시정지, `R` 처음부터 다시 재생.
 
+### Isaac Sim 확장 (영상을 골라서 실행)
+
+```
+C:\isaacsim\isaac-sim.bat --ext-folder exts --enable cctv.dual_tracking
+```
+**CCTV Dual Tracking** 창에서 시나리오나 영상(파일 또는 프레임 폴더)을 골라 Start를 누르면 뷰포트에서 재구성이 돈다
+([exts/cctv.dual_tracking/docs/README.md](exts/cctv.dual_tracking/docs/README.md)).
+
+### VLM 장면 분석 (선택)
+
+YOLO와 별개로 비전-언어 모델이 장면을 설명한다(사고·연기·도로 위 사람 등). Ollama를 설치하고 `ollama pull llava:7b`를 한 뒤
+설정에서 `vlm.enabled: true`로 켠다. 오프라인 분석: `C:\isaacsim\kit\python\python.exe tools/vlm_analyze.py --config <설정>`.
+
 ## 문서
 
 | 문서 | 내용 |
@@ -53,14 +66,25 @@ C:\isaacsim\kit\python\python.exe tools/mine_near_misses.py --top 20
 ```
 방법과 한계는 TECHNICAL_NOTES 12장, 결과는 `data/results/near_miss/REPORT.md`에 있다.
 
+## 실제 사고 검증 (TUM Traffic Accid3nD)
+
+실제 고속도로 사고 영상(고정 카메라 원본)으로 검증했다. 12개 시퀀스 중 접촉 장면이 보이는 3건을 **하나도 잡지 못했다**.
+사고 순간의 비정상 움직임을 추적 오류 필터가 걸러 내기 때문이다. 새로 넣은 **차로 정지 차량** 탐지는 s01의 원인 차량을 잡았다.
+사고 장면은 `D:\datasets\TUMTraf-Accid3nD\accident_scenes\`에 따로 분리했다. 장면별 실행 설정은 `config/tum_*.yaml`이다:
+```
+C:\isaacsim\python.bat main.py --config config/tum_r09_s01_south50.yaml
+```
+자세한 내용은 TECHNICAL_NOTES 13~15장에 있다.
+
 ## 디렉터리
 
 ```
 main.py        앱 진입점
-perception/    영상 → 추적 결과 (YOLO, 흔들림 보정, 인식 프로세스)
+perception/    영상 → 추적 결과 (YOLO, 흔들림 보정, 인식 프로세스), vlm/ (VLM 장면 분석)
 world/         월드 모델 (투영, 필터, 일관성, 차량 운전) — 순수 numpy
-simulation/    Isaac Sim 렌더링 (카메라, 차량, 보행자)
-analysis/      오프라인 분석: 자동 도로 기하, 위험 장면 지표
+simulation/    Isaac Sim 렌더링 (장면, 카메라, 차량, 보행자)
+exts/          Isaac Sim 확장 cctv.dual_tracking (영상 선택 → 시뮬레이션)
+analysis/      오프라인 분석: 자동 도로 기하, 위험 장면 지표, TUM 사고 데이터
 tools/         캘리브레이션, 캐시, 평가, 위험 장면 탐색 도구
 config/        시퀀스별 설정, TEMPLATE.yaml
 docs/          문서

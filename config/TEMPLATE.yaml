@@ -59,6 +59,16 @@ dynamic_logic:              # world/dynamic_logic.py (all optional, defaults sho
 stabilization:
   enabled: true             # camera motion compensation against the first frame
 
+vlm:                        # perception/vlm: image analysis by a vision-language model, separate from YOLO
+  enabled: false            # needs a running Ollama server with the model pulled (ollama pull llava:7b)
+  backend: ollama
+  url: "http://localhost:11434"
+  model: "llava:7b"
+  interval_s: 2.0           # analyze at most one frame per this many seconds (latest frame wins)
+  max_side: 672             # px; frames are downscaled to this long side before sending
+  timeout_s: 60.0
+  # prompt: "..."           # default: perception/vlm/prompts.py SCENE_PROMPT (JSON answer)
+
 display:
   show_real: true
   show_sim: true

@@ -1,0 +1,43 @@
+# TUM Traffic Accid3nD r09_s02 s040_camera_basler_north_50mm: real accident, contact at 20.0 s of this clip
+#   single vehicle: the trailer of a blue van starts swaying (28 s on north_50mm), the van crosses to the left shoulder and overturns (33.5 s)
+# Camera fitted to the dataset's 3D labels (tools/export_accident_scenes.py,
+# box fit error 0.052 box heights), local road frame:
+# X right, Y along the road away from the camera, Z up, origin on the road below the image center.
+#
+# Run:
+#   C:\isaacsim\python.bat main.py --config config/tum_r09_s02_north50.yaml
+
+video: {path: 'D:/datasets/TUMTraf-Accid3nD/accident_scenes/r09_s02_north50/images',
+  fps: 25}
+yolo:
+  model_path: yolov8n.pt
+  confidence: 0.25
+  classes: [0, 2, 5, 7]
+  tracker_config: bytetrack.yaml
+simulation:
+  vehicle_dynamics: true
+  ground_size: 400.0
+  camera:
+    position: [-3.8, -81.02, 8.2]
+    pitch_deg: 3.49
+    yaw_deg: -2.68
+    focal_px: 9020
+    image_size: [1920, 1200]
+  lane_lines_x: []
+mapping:
+  calibration_points:
+  - - [576.0, 1104.0]
+    - [-3.51, -11.08]
+  - - [1344.0, 1104.0]
+    - [2.48, -11.2]
+  - - [672.0, 720.0]
+    - [-2.17, 29.23]
+  - - [1248.0, 720.0]
+    - [4.9, 29.19]
+stabilization: {enabled: false}
+display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
+vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'llava:7b',
+  interval_s: 2.0, max_side: 672, timeout_s: 60.0}
+accident: {contact_s: 20.0, sequence: r09_s02, camera: s040_camera_basler_north_50mm,
+  description: 'single vehicle: the trailer of a blue van starts swaying (28 s on
+    north_50mm), the van crosses to the left shoulder and overturns (33.5 s)'}

@@ -12,7 +12,7 @@ import queue
 import time
 import traceback
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Sequence
 
 import numpy as np
 
@@ -38,9 +38,11 @@ PERCEPTION_THREADS = 4
 
 
 def _process_main(video_path: str, fps, yolo_config: dict, stabilize: bool,
-                  out_queue, stop_event):
+                  out_queue, stop_event, extra_paths=()):
     """Entry point of the perception process."""
     try:
+        import sys
+        sys.path[:0] = [p for p in extra_paths if p not in sys.path]
         import cv2
         import torch
         cv2.setNumThreads(PERCEPTION_THREADS)
@@ -88,26 +90,40 @@ class PerceptionWorker:
     """Produces PerceptionResults in frame order from a child process."""
 
     def __init__(self, video_path: str, yolo_config: dict, stabilize: bool,
-                 queue_size: int = 4, fps=None):
-        """`fps`: capture rate, required when `video_path` is a directory of frames."""
+                 queue_size: int = 4, fps=None, python_executable: Optional[str] = None,
+                 extra_paths: Sequence[str] = ()):
+        """
+        `fps`: capture rate, required when `video_path` is a directory of frames.
+        `python_executable`, `extra_paths`: interpreter for the child process and import
+        paths to add in it; needed inside a Kit app (Omniverse extension), where
+        sys.executable is kit.exe and extension packages (torch) are not on the
+        child's default path.
+        """
         self.video_path = video_path
         self.fps = fps
         self.yolo_config = dict(yolo_config)
         self.stabilize = stabilize
         self.queue_size = queue_size
         self._ctx = mp.get_context("spawn")
+        self.python_executable = python_executable
+        self.extra_paths = list(extra_paths)
         self._process = None
         self._queue = None
         self._stop = None
+        self.finished = False   # end of video reached (see poll())
 
     def start(self):
         """Start (or restart from the first frame) the perception process."""
         self.stop()
+        self.finished = False
+        if self.python_executable:
+            self._ctx.set_executable(self.python_executable)
         self._queue = self._ctx.Queue(maxsize=self.queue_size)
         self._stop = self._ctx.Event()
         self._process = self._ctx.Process(
             target=_process_main, name="perception", daemon=True,
-            args=(self.video_path, self.fps, self.yolo_config, self.stabilize, self._queue, self._stop))
+            args=(self.video_path, self.fps, self.yolo_config, self.stabilize, self._queue, self._stop,
+                  self.extra_paths))
         self._process.start()
 
     def stop(self):
@@ -129,9 +145,32 @@ class PerceptionWorker:
     def results(self):
         """Iterate results in order until the video ends (raises perception errors)."""
         while True:
-            item = self._queue.get()
-            if isinstance(item, str) and item == _END:
+            item = self.poll(timeout=None)
+            if item is None:
                 return
-            if isinstance(item, tuple) and item and item[0] == _ERROR:
-                raise RuntimeError("Perception process failed:\n" + item[1])
             yield item
+
+    def poll(self, timeout: Optional[float] = 0.0) -> Optional[PerceptionResult]:
+        """
+        Next result, or None if none is ready within `timeout` (None = wait for it) or
+        the video has ended (then `finished` is True). For event-driven callers (the
+        Omniverse extension's update loop) that must not block. Raises perception errors.
+        """
+        if self.finished or self._queue is None:
+            return None
+        try:
+            if timeout is None:
+                item = self._queue.get()
+            elif timeout > 0:
+                item = self._queue.get(timeout=timeout)
+            else:
+                item = self._queue.get_nowait()
+        except queue.Empty:
+            return None
+        if isinstance(item, str) and item == _END:
+            self.finished = True
+            return None
+        if isinstance(item, tuple) and item and item[0] == _ERROR:
+            self.finished = True
+            raise RuntimeError("Perception process failed:\n" + item[1])
+        return item

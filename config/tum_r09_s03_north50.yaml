@@ -1,0 +1,44 @@
+# TUM Traffic Accid3nD r09_s03 s040_camera_basler_north_50mm: real accident, contact at 7.5 s of this clip
+#   slow dense traffic on the far carriageway: a dark car hits the right side of a white taxi (debris at 7.6 s on north_50mm); both stop, occupants get out
+# Camera fitted to the dataset's 3D labels (tools/export_accident_scenes.py,
+# box fit error 0.049 box heights), local road frame:
+# X right, Y along the road away from the camera, Z up, origin on the road below the image center.
+#
+# Run:
+#   C:\isaacsim\python.bat main.py --config config/tum_r09_s03_north50.yaml
+
+video: {path: 'D:/datasets/TUMTraf-Accid3nD/accident_scenes/r09_s03_north50/images',
+  fps: 25}
+yolo:
+  model_path: yolov8n.pt
+  confidence: 0.25
+  classes: [0, 2, 5, 7]
+  tracker_config: bytetrack.yaml
+simulation:
+  vehicle_dynamics: true
+  ground_size: 400.0
+  camera:
+    position: [-3.82, -81.39, 8.25]
+    pitch_deg: 3.49
+    yaw_deg: -2.68
+    focal_px: 9018
+    image_size: [1920, 1200]
+  lane_lines_x: []
+mapping:
+  calibration_points:
+  - - [576.0, 1104.0]
+    - [-3.53, -11.13]
+  - - [1344.0, 1104.0]
+    - [2.49, -11.23]
+  - - [672.0, 720.0]
+    - [-2.18, 29.3]
+  - - [1248.0, 720.0]
+    - [4.92, 29.31]
+stabilization: {enabled: false}
+display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
+vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'llava:7b',
+  interval_s: 2.0, max_side: 672, timeout_s: 60.0}
+accident: {contact_s: 7.5, sequence: r09_s03, camera: s040_camera_basler_north_50mm,
+  description: 'slow dense traffic on the far carriageway: a dark car hits the right
+    side of a white taxi (debris at 7.6 s on north_50mm); both stop, occupants get
+    out'}

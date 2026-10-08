@@ -12,6 +12,8 @@ below is a ratio of w-differences or w-rates, so A cancels exactly:
   THW      time headway: spacing / follower speed (same spacing definition)
   DECEL    relative deceleration: speed drop within 1 s as a fraction of the speed
   LATERAL  lateral speed (m/s) and displacement: abrupt lane change / swerve
+  STOPPED  a vehicle standing in a travel lane while same-direction traffic passes it
+           (incident / obstacle: broken-down or crashed vehicle; duration in s)
 
 Absolute longitudinal speeds and distances are NOT available (A unknown).
 """
@@ -42,6 +44,16 @@ EVENT_MIN_BOX_HEIGHT = 40   # px; a vehicle in an event must be at least this la
 EVENT_EDGE_MARGIN_PX = 30   # this far from the left/right image edge (not entering/leaving),
 EVENT_MAX_M_PER_PX = 0.05   # and this near: depth-rate noise grows with distance squared
 LATERAL_CLASSES = ("car",)  # bus/truck boxes change shape with occlusion: lateral unreliable
+OCCLUSION_MAX = 0.3         # box fraction covered by a nearer box: contact point unreliable
+MOSTLY_STATIONARY = 0.2     # tracks moving less than this fraction of the time are stopped
+                            # vehicles: kept even if their few moves are off the road axis
+STOP_SPEED_RATIO = 0.1      # x reference speed: below = standing
+LANE_BAND_M = 1.0           # moving traffic within this lateral distance = same travel lane
+PASS_LATERAL_M = 7.0        # passing traffic within this lateral distance (same carriageway)
+PASS_DEPTH_RATIO = 0.25     # ... and reaching within this fraction of its depth w, still moving
+PASS_MIN_SPEED = 0.25       # x reference speed: clearly moving (traffic beside an incident is slow)
+MIN_PASSING = 2             # vehicles: lane users / passers needed for a stopped-in-lane event
+MAX_OTHERS_STANDING = 1     # more vehicles standing (>= 2 s) on the same carriageway = a queue
 
 THRESHOLDS = {
     "rear_end_ttc": 2.0,        # s, TTC_ff below
@@ -50,6 +62,7 @@ THRESHOLDS = {
     "decel_ratio": 0.35,        # speed drop within 1 s
     "lateral_speed": 1.5,       # m/s
     "lateral_displacement": 1.5,  # m within the event
+    "stopped_duration": 5.0,    # s standing in a travel lane while traffic passes
     "min_duration": 0.2,        # s, any event
 }
 
@@ -75,16 +88,17 @@ class Track:
     dw: np.ndarray = None       # depth rate (1/s in w units)
     pixel_speed: np.ndarray = None
     reliable: np.ndarray = None # samples usable for events (see build_tracks)
+    occlusion: np.ndarray = None  # box fraction covered by a nearer box
 
 
 @dataclass
 class Event:
-    kind: str                   # rear_end | tailgating | hard_braking | abrupt_lateral
+    kind: str                   # rear_end | tailgating | hard_braking | abrupt_lateral | stopped_in_lane
     start: int                  # frame index (0-based)
     end: int
     peak: int
     track_ids: Tuple[int, ...]
-    value: float                # TTC_ff (s) / THW (s) / decel ratio / lateral speed (m/s)
+    value: float                # TTC_ff (s) / THW (s) / decel ratio / lateral speed (m/s) / duration (s)
     details: Dict = field(default_factory=dict)
 
     @property
@@ -105,6 +119,8 @@ class Event:
             return t["tailgating_thw"] / max(self.value, 0.05)
         if self.kind == "hard_braking":
             return self.value / t["decel_ratio"]
+        if self.kind == "stopped_in_lane":
+            return self.value / t["stopped_duration"]
         return self.value / t["lateral_speed"]
 
 
@@ -129,7 +145,9 @@ def build_tracks(frames: Sequence, transforms: Optional[Sequence], image_size,
     coordinates are unreliable: truncated boxes, small/far boxes and points too near
     the horizon (lateral resolution worse than MAX_LATERAL_M_PER_PX), tracker jumps
     (tracks are split there), and tracks not moving along the road (parking lots,
-    turning traffic).
+    turning traffic). Mostly stationary tracks stay even if their few moves are off
+    axis (a stopped vehicle pushed in a crash). Samples whose box is largely covered
+    by a nearer box are not used for events (occlusion moves the contact point).
     """
     raw: Dict[int, List] = {}
     names: Dict[int, List[str]] = {}
@@ -139,7 +157,8 @@ def build_tracks(frames: Sequence, transforms: Optional[Sequence], image_size,
     m = BORDER_MARGIN_PX
     for f, detections in enumerate(frames):
         T = transforms[f] if transforms is not None else None
-        for tid, (x1, y1, x2, y2), name in detections:
+        occlusion = _occlusion([d[1] for d in detections])
+        for (tid, (x1, y1, x2, y2), name), occ in zip(detections, occlusion):
             if name not in VEHICLES or (y2 - y1) < MIN_BOX_HEIGHT:
                 continue
             if x1 <= m or y1 <= m or x2 >= width - m or y2 >= height - m:
@@ -147,7 +166,7 @@ def build_tracks(frames: Sequence, transforms: Optional[Sequence], image_size,
             x, y = _apply(T, (x1 + x2) / 2, y2)
             if y - y_h < min_dy:
                 continue
-            raw.setdefault(tid, []).append((f, x, y, y2 - y1, x1, x2))
+            raw.setdefault(tid, []).append((f, x, y, y2 - y1, x1, x2, occ))
             names.setdefault(tid, []).append(name)
 
     tracks = {}
@@ -170,8 +189,10 @@ def build_tracks(frames: Sequence, transforms: Optional[Sequence], image_size,
         bh = np.interp(f_all, piece[:, 0], piece[:, 3])
         rx1 = np.interp(f_all, piece[:, 0], piece[:, 4])
         rx2 = np.interp(f_all, piece[:, 0], piece[:, 5])
+        occ = np.interp(f_all, piece[:, 0], piece[:, 6])
         name = max(set(names[tid]), key=names[tid].count)
         t = Track(tid, name, f_all, x, y, bh, rx1, rx2)
+        t.occlusion = occ
         t.X = _savgol(road.lateral(x, y), SMOOTH_WINDOW, 0, dt)
         t.w = _savgol(road.depth(y), SMOOTH_WINDOW, 0, dt)
         t.dX = _savgol(road.lateral(x, y), SMOOTH_WINDOW, 1, dt)
@@ -184,10 +205,26 @@ def build_tracks(frames: Sequence, transforms: Optional[Sequence], image_size,
         interior = np.zeros(len(f_all), bool)
         interior[half:len(f_all) - half] = True
         near = (y - y_h) >= road.height_m / (np.cos(np.radians(road.pitch_deg)) * EVENT_MAX_M_PER_PX)
-        t.reliable = (interior & near & (bh >= EVENT_MIN_BOX_HEIGHT)
+        t.reliable = (interior & near & (bh >= EVENT_MIN_BOX_HEIGHT) & (occ <= OCCLUSION_MAX)
                       & (rx1 > EVENT_EDGE_MARGIN_PX) & (rx2 < width - EVENT_EDGE_MARGIN_PX))
         tracks[tid] = t
     return tracks
+
+
+def _occlusion(boxes) -> List[float]:
+    """Per box, the largest fraction of its area covered by one nearer box (lower
+    bottom edge = closer to the camera)."""
+    out = []
+    for i, (x1, y1, x2, y2) in enumerate(boxes):
+        area = max((x2 - x1) * (y2 - y1), 1e-9)
+        cover = 0.0
+        for j, (u1, v1, u2, v2) in enumerate(boxes):
+            if j != i and v2 > y2:
+                iw, ih = min(x2, u2) - max(x1, u1), min(y2, v2) - max(y1, v1)
+                if iw > 0 and ih > 0:
+                    cover = max(cover, iw * ih / area)
+        out.append(cover)
+    return out
 
 
 def _along_road(x: np.ndarray, y: np.ndarray, vp: Tuple[float, float]) -> bool:
@@ -196,8 +233,8 @@ def _along_road(x: np.ndarray, y: np.ndarray, vp: Tuple[float, float]) -> bool:
     lag = min(ROAD_CHECK_LAG, len(x) - 1)
     dx, dy = x[lag:] - x[:-lag], y[lag:] - y[:-lag]
     moving = np.hypot(dx, dy) > 5.0
-    if moving.sum() < 5:
-        return True   # (nearly) stationary vehicles stay; they never qualify as moving
+    if moving.sum() < 5 or moving.mean() < MOSTLY_STATIONARY:
+        return True   # (mostly) stationary vehicles stay; they never qualify as moving
     tx, ty = vp[0] - x[:-lag][moving], vp[1] - y[:-lag][moving]
     cos = np.abs(dx[moving] * tx + dy[moving] * ty) / (
         np.hypot(dx[moving], dy[moving]) * np.hypot(tx, ty) + 1e-9)
@@ -342,4 +379,58 @@ def find_events(tracks: Dict[int, Track], n_frames: int, fps: float,
                 continue
             events.append(Event("abrupt_lateral", int(t.frames[a]), int(t.frames[b]), int(t.frames[k]),
                                 (t.track_id,), float(lateral[k]), {"lateral_displacement_m": displacement}))
+
+    events.extend(_stopped_in_lane(tracks, fps, v_ref, th))
     return sorted(events, key=lambda e: -e.severity)
+
+
+def _stopped_in_lane(tracks: Dict[int, Track], fps: float, v_ref: float, th: Dict[str, float]) -> List[Event]:
+    """
+    A vehicle standing for at least th["stopped_duration"] in a travel lane while the
+    traffic of that lane keeps going around it: an incident (breakdown, crash) or an
+    obstacle. Told apart from
+      - parked vehicles: moving traffic uses its lateral band (lane) somewhere in view
+      - queues (red light, congestion, stop-and-go): same-direction vehicles keep
+        moving up to its depth (alongside it) while it stands, and at most
+        MAX_OTHERS_STANDING other vehicles on the carriageway stand meanwhile (an
+        accident may stop two); in a queue many stand
+    """
+    if v_ref <= 0:
+        return []
+    min_len = int(round(th["stopped_duration"] * fps))
+    moving = {tid: (np.abs(o.dw) > PASS_MIN_SPEED * v_ref) & (o.pixel_speed > MIN_PIXEL_SPEED) & o.reliable
+              for tid, o in tracks.items()}
+    events = []
+    for t in tracks.values():
+        for a, b in _runs((np.abs(t.dw) < STOP_SPEED_RATIO * v_ref) & t.reliable):
+            if b - a + 1 < min_len:
+                continue
+            f0, f1 = int(t.frames[a]), int(t.frames[b])
+            X0, w0 = float(np.median(t.X[a:b + 1])), float(np.median(t.w[a:b + 1]))
+            lane_dirs = []
+            for tid, o in tracks.items():
+                band = moving[tid] & (np.abs(o.X - X0) < LANE_BAND_M)
+                if tid != t.track_id and band.any():
+                    lane_dirs.append(np.sign(np.median(o.dw[band])))
+            if len(lane_dirs) < MIN_PASSING or np.sum(lane_dirs) == 0:
+                continue
+            direction = np.sign(np.sum(lane_dirs))
+            passing = 0
+            for tid, o in tracks.items():
+                sel = (moving[tid] & (o.frames >= f0) & (o.frames <= f1) & (np.sign(o.dw) == direction)
+                       & (np.abs(o.X - X0) < PASS_LATERAL_M))
+                if tid != t.track_id and sel.sum() >= 2:
+                    passing += int(np.min(np.abs(o.w[sel] - w0)) < PASS_DEPTH_RATIO * w0)
+            if passing < MIN_PASSING:
+                continue
+            standing = 0
+            for tid, o in tracks.items():
+                sel = ((o.frames >= f0) & (o.frames <= f1) & (np.abs(o.X - X0) < PASS_LATERAL_M)
+                       & (np.abs(o.dw) < STOP_SPEED_RATIO * v_ref))
+                if tid != t.track_id and any(q - p + 1 >= 2 * fps for p, q in _runs(sel)):
+                    standing += 1
+            if standing > MAX_OTHERS_STANDING:
+                continue
+            events.append(Event("stopped_in_lane", f0, f1, f0, (t.track_id,), (b - a + 1) / fps,
+                                {"passing": passing, "lane_users": len(lane_dirs), "others_standing": standing}))
+    return events

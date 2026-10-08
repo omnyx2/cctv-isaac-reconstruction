@@ -1,0 +1,57 @@
+# Manually annotated accidents in TUM Traffic Accid3nD (watched frame by frame).
+# Every sequence is listed; [] = no contact in view (aftermath, fire, night, ...).
+# The labels' 3D cuboids cannot be used as collision ground truth: their footprints
+# overlap all the time (trailers, buses, jitter) and miss the real contacts.
+#
+# time:      absolute unix time (s) of the first contact (single-vehicle: loss of control),
+#            same clock as the image file names
+# cameras:   cameras that see it -> approximate image location of the contact (full-res px, 1920x1200)
+# vehicles:  what happened
+
+r09_s01:
+  - time: 1617874312.76
+    vehicles: "white van stopped in the left lane since the start of the sequence (traffic swerves around it); a yellow car squeezes between the van and the median barrier, hits the barrier and the van, which is pushed forward"
+    cameras:
+      s050_camera_basler_south_16mm: [700, 220]
+      s050_camera_basler_south_50mm: [520, 600]
+
+r09_s02:
+  - time: 1634804532.41
+    vehicles: "single vehicle: the trailer of a blue van starts swaying (28 s on north_50mm), the van crosses to the left shoulder and overturns (33.5 s)"
+    cameras:
+      s040_camera_basler_north_50mm: [400, 260]
+
+r09_s03:
+  - time: 1648480757.48
+    vehicles: "slow dense traffic on the far carriageway: a dark car hits the right side of a white taxi (debris at 7.6 s on north_50mm); both stop, occupants get out"
+    cameras:
+      s040_camera_basler_north_50mm: [1860, 610]
+
+# Aftermath of r09_s03 (same site, 43 min later): rescue vehicles on the far shoulder.
+r09_s04: []
+
+# Not evaluable: the published r09_s05/images are byte-identical copies of r09_s06/images
+# (same file names and content); the images of the r09_s05 labels are not in the release.
+r09_s05: []
+
+# Vehicle fire (thick smoke) from the first frame, no contact in view.
+r09_s06: []
+
+# Aftermath of the r09_s06 fire (fire engines, firefighters on the road).
+r09_s07: []
+
+# Night, heavy glare: no contact identifiable by eye (queue on the left carriageway).
+r09_s08: []
+
+# A tow truck loads a car at the start; no contact identified.
+r09_s09: []
+
+# A semitrailer truck pulls onto the left shoulder (20-27 s on north_50mm), a small car stops
+# behind it and the drivers get out: contact not in view (likely upstream).
+r09_s10: []
+
+# Night: no contact identifiable by eye.
+r09_s11: []
+
+# Aftermath only: ambulance and police already on scene (blue lights) from the first frame, no contact in view.
+r09_s12: []

@@ -31,7 +31,7 @@ def solve_focal(G, cx, cy):
         na, nb = np.linalg.norm(a), np.linalg.norm(b)
         return abs(a @ b) / (na * nb) + abs(na / nb - 1)
 
-    focals = np.arange(200, 5000, 1.0)
+    focals = np.arange(200, 20000, 1.0)   # up to telephoto CCTV lenses (50 mm on 1920 px: ~9000)
     return float(focals[int(np.argmin([residual(f) for f in focals]))])
 
 

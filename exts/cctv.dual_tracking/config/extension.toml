@@ -1,0 +1,32 @@
+[package]
+version = "0.1.0"
+title = "CCTV Dual Tracking"
+description = "Pick a raw CCTV video (or frame folder) and watch it reconstructed live in Isaac Sim: YOLO + ByteTrack tracking, world model, bicycle-model driving, optional VLM scene analysis."
+category = "Simulation"
+keywords = ["cctv", "traffic", "tracking", "accident", "reconstruction"]
+authors = ["hyeonseok"]
+readme = "docs/README.md"
+changelog = "docs/CHANGELOG.md"
+
+[dependencies]
+"omni.ui" = {}
+"omni.usd" = {}
+"omni.kit.viewport.utility" = {}
+"omni.kit.window.filepicker" = {}
+"omni.kit.capture.viewport" = {optional = true}
+"omni.isaac.ml_archive" = {}    # torch for the perception process (YOLO)
+
+[[python.module]]
+name = "cctv.dual_tracking"
+
+[settings]
+# Project directory (configs, models, perception/world/simulation packages).
+# Empty = the project this extension folder lives in (<project>/exts/cctv.dual_tracking).
+exts."cctv.dual_tracking".project_root = ""
+# Start this config right after startup (project-relative path; empty = wait for the user)
+exts."cctv.dual_tracking".autostart_config = ""
+# Save the real view with tracks + the viewport every N video frames to this folder (empty = off)
+exts."cctv.dual_tracking".snapshot_dir = ""
+exts."cctv.dual_tracking".snapshot_every = 125
+# Quit Isaac Sim when the video ends (unattended runs)
+exts."cctv.dual_tracking".quit_on_finish = false
