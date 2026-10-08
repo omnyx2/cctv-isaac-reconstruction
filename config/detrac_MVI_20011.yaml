@@ -1,0 +1,69 @@
+# UA-DETRAC MVI_20011 (Beijing, pedestrian overpass, handheld Canon EOS 550D)
+#
+# Calibration derived from lane markings (tools/calibrate_camera.py):
+#   - lane width 3.5 m
+#   - lane dashes 6 m line / 9 m gap (GB 5768 arterial standard)
+# focal=974px  hfov=52.5deg  camera height=7.59m  pitch_down=15.7deg  reproj_err=0.51px
+#
+# Run:
+#   python tools/detrac_to_video.py MVI_20011
+#   C:\isaacsim\python.bat main.py --config config/detrac_MVI_20011.yaml
+
+video:
+  path: "data/videos/detrac_MVI_20011.mp4"
+  fps: 25
+
+yolo:
+  model_path: "yolov8n.pt"
+  confidence: 0.25        # best MOTA on MVI_20011 (tools/eval_tracking.py)
+  classes: [0, 2, 5, 7]   # person, car, bus, truck
+  tracker_config: "bytetrack.yaml"
+
+simulation:
+  # Drive vehicles with a kinematic bicycle model + tracking controller along the
+  # perceived trajectory (false = place them at the perceived pose)
+  vehicle_dynamics: true
+  ground_size: 200.0
+  camera:
+    position: [-0.03, -21.48, 7.59]
+    pitch_deg: 15.66
+    yaw_deg: 3.60
+    focal_px: 974
+    image_size: [960, 540]
+  # Lane boundary X positions (m) drawn on the ground plane
+  lane_lines_x: [-3.5, 0.0, 3.5, 7.0]
+
+mapping:
+  # [[pixel_x, pixel_y], [world_x, world_y]]
+  calibration_points:
+    - [[540, 335], [0, 0]]
+    - [[692, 335], [3.5, 0]]
+    - [[540, 175], [0, 21]]
+    - [[620, 175], [3.5, 21]]
+
+dynamic_logic:
+  enabled: true
+  process_noise: 2.0        # acceleration noise std (m/s^2), constant velocity model
+  measurement_noise: 0.5    # fallback position variance (m^2)
+  prediction_steps: 5
+  pixel_noise: 1.0          # detection noise sigma = pixel_noise + ratio * bbox height (px)
+  pixel_noise_ratio: 0.03
+  min_moving_speed: 1.5     # m/s; below this velocity never sets heading
+  max_yaw_rate_deg: 60.0    # vehicles cannot turn faster than this
+  heading_gain: 0.3
+  coast_time: 0.6           # s to bridge missed detections
+  handoff_distance: 3.0     # m; new track ID inherits a lost track this close
+  flow_cell_size: 2.0       # m; local flow field resolution
+  motion_window: 1.0        # s of net displacement deciding moving vs parked
+  anchor_smoothing: 0.05    # per-frame smoothing of a parked vehicle position
+
+display:
+  show_real: true
+  show_sim: true
+  window_width: 960
+  window_height: 540
+
+# Camera motion compensation: the footage is handheld, so the image drifts against the
+# calibration frame (frame 0). Detections are mapped back to frame 0 before projection.
+stabilization:
+  enabled: true

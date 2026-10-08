@@ -1,0 +1,70 @@
+# UA-DETRAC MVI_40191 (Beijing urban expressway with median, both directions)
+#
+# Calibration derived from lane markings (tools/calibrate_camera.py):
+#   - lane width 3.75 m (expressway)
+#   - lane dashes 6 m line / 9 m gap: rows 161 -> 290 span two dash periods = 30 m
+#     (the 2 m / 4 m urban standard would need a 82 deg FOV, impossible for the
+#      Canon 18-55 mm kit lens, so it was rejected)
+#   - cross-check: opposite carriageway dashes project to X = -10.5 / -14.5 m (~3.9 m apart)
+# focal=1557px  hfov=34.3deg  camera height=9.28m  pitch_down=11.1deg  reproj_err=0.66px
+#
+# Run:
+#   python tools/detrac_to_video.py MVI_40191
+#   C:\isaacsim\python.bat main.py --config config/detrac_MVI_40191.yaml
+
+video:
+  path: "data/videos/detrac_MVI_40191.mp4"
+  fps: 25
+
+yolo:
+  model_path: "yolov8n.pt"
+  confidence: 0.25
+  classes: [0, 2, 5, 7]   # person, car, bus, truck
+  tracker_config: "bytetrack.yaml"
+
+simulation:
+  # Drive vehicles with a kinematic bicycle model + tracking controller along the
+  # perceived trajectory (false = place them at the perceived pose)
+  vehicle_dynamics: true
+  ground_size: 240.0
+  camera:
+    position: [-5.67, -44.55, 9.28]
+    pitch_deg: 11.13
+    yaw_deg: 1.60
+    focal_px: 1557
+    image_size: [960, 540]
+  # Opposite carriageway | median | this carriageway (m)
+  lane_lines_x: [-18.3, -14.5, -10.5, -6.6, -2.5, 0.0, 3.75, 7.5, 11.25]
+
+mapping:
+  # [[pixel_x, pixel_y], [world_x, world_y]]
+  calibration_points:
+    - [[717, 290], [0, 0]]
+    - [[847, 290], [3.75, 0]]
+    - [[642, 161], [0, 30]]
+    - [[720, 162], [3.75, 30]]
+
+dynamic_logic:
+  enabled: true
+  process_noise: 2.0        # acceleration noise std (m/s^2), constant velocity model
+  measurement_noise: 0.5    # fallback position variance (m^2)
+  prediction_steps: 5
+  pixel_noise: 1.0          # detection noise sigma = pixel_noise + ratio * bbox size (px)
+  pixel_noise_ratio: 0.03
+  min_moving_speed: 1.5     # m/s; below this velocity never sets heading
+  max_yaw_rate_deg: 60.0    # vehicles cannot turn faster than this
+  heading_gain: 0.3
+  coast_time: 0.6           # s to bridge missed detections
+  handoff_distance: 3.0     # m; new track ID inherits a lost track this close
+  flow_cell_size: 2.0       # m; local flow field resolution
+  motion_window: 1.0        # s of net displacement deciding moving vs parked
+  anchor_smoothing: 0.05    # per-frame smoothing of a parked vehicle position
+
+stabilization:
+  enabled: true
+
+display:
+  show_real: true
+  show_sim: true
+  window_width: 960
+  window_height: 540

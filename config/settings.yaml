@@ -1,0 +1,44 @@
+# CCTV Dual-Tracking Project Settings
+
+# Video Settings
+video:
+  path: "data/videos/sample.mp4"
+  fps: 30
+  width: 1920
+  height: 1080
+
+# YOLO Settings
+yolo:
+  model_path: "yolov8n.pt"  # yolov8n, yolov8s, yolov8m, yolov8l, yolov8x
+  confidence: 0.5
+  classes: [0, 2, 5, 7]   # person, car, bus, truck (COCO classes)
+  tracker_config: "bytetrack.yaml"  # or botsort.yaml
+
+# Isaac Sim Settings
+simulation:
+  ground_size: 100.0  # meters
+  camera_height: 10.0  # CCTV camera height in meters
+
+# Coordinate Mapping (2D -> 3D)
+mapping:
+  # Homography points: [[pixel_x, pixel_y], [world_x, world_y, world_z]]
+  # Define 4+ correspondence points for calibration
+  calibration_points: []
+  # Or use simple scale mapping
+  scale_x: 0.05  # pixels to meters
+  scale_y: 0.05
+  origin_offset: [0, 0]  # image origin offset in pixels
+
+# Dynamic Logic (Kalman Filter)
+dynamic_logic:
+  enabled: true
+  process_noise: 2.0        # acceleration noise std (m/s^2)
+  measurement_noise: 0.5
+  prediction_steps: 5
+
+# Display Settings
+display:
+  show_real: true
+  show_sim: true
+  window_width: 960
+  window_height: 540

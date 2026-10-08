@@ -1,0 +1,10 @@
+# Large data (datasets, videos, results, caches) and model weights stay out of git
+data/
+*.pt
+
+# Python
+__pycache__/
+*.pyc
+
+# Local Claude Code state
+.claude/settings.local.json
