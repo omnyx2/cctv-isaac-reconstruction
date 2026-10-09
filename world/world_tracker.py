@@ -2,6 +2,11 @@
 
 detections (image) -> ground projection -> dynamic logic -> physical consistency
 -> world objects for the simulation.
+
+Shown: road users whose existence is CONFIRMED (detected this frame) or HIDDEN
+(predicted through a missed detection). The tracker also gives the existence
+automaton (world/dynamic_logic.py) its image evidence: whether a new detection
+emerges from behind another road user, and whether a missing one is occluded.
 """
 
 from collections import Counter, defaultdict
@@ -11,7 +16,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from world.coordinate_mapper import CoordinateMapper
-from world.dynamic_logic import DynamicLogic
+from world.dynamic_logic import CONFIRMED, ENDED, DynamicLogic
 from world.scene_consistency import (candidate_pairs, count_overlaps, footprint_corners,
                                      half_extent_along, penetration, resolve_overlaps)
 
@@ -19,7 +24,9 @@ from world.scene_consistency import (candidate_pairs, count_overlaps, footprint_
 # vehicle's road contact point
 BORDER_MARGIN_PX = 3
 TRUNCATED_NOISE_SCALE = 25.0     # measurement variance multiplier for truncated boxes
-MIN_HITS_TO_SHOW = 3             # frames a track must be detected before it is shown
+# Image-level occlusion: a box covered this much by another road user's box is behind it
+# (a new detection emerging from it, or a missing one hidden by it)
+OCCLUDED_RATIO = 0.3
 # Image-level duplicate: a vehicle box almost entirely inside another one whose bottom
 # edge (road contact = depth) matches is a part of the same vehicle (e.g. truck cab).
 # Two different vehicles at the same depth cannot appear one inside the other.
@@ -73,6 +80,7 @@ class WorldTracker:
 
         self._class_votes: Dict[int, Counter] = defaultdict(Counter)
         self._hits: Dict[int, int] = defaultdict(int)
+        self._last_box: Dict[int, Tuple[float, float]] = {}   # last detected box (width, height) px
         self.stats = Counter()
 
     # ------------------------------------------------------------------ helpers
@@ -102,6 +110,7 @@ class WorldTracker:
         """Forget all tracks (dynamic logic is reset by its owner)."""
         self._class_votes.clear()
         self._hits.clear()
+        self._last_box.clear()
 
     # ------------------------------------------------------------------ frame
 
@@ -127,6 +136,40 @@ class WorldTracker:
                     dropped.add(small.track_id)
         self.stats["merged_contained_detections"] += len(dropped)
         return [d for d in detections if d.track_id not in dropped]
+
+    @staticmethod
+    def _covered(box, others) -> bool:
+        """`box` covered by one of `others` in front of it (its bottom edge, the road
+        contact, nearer the image bottom = nearer the camera) by at least OCCLUDED_RATIO
+        of its area."""
+        area = max(0.0, box[2] - box[0]) * max(0.0, box[3] - box[1])
+        if area <= 0:
+            return False
+        for o in others:
+            if o[3] < box[3]:
+                continue                       # behind it: cannot hide it
+            inter = (max(0.0, min(box[2], o[2]) - max(box[0], o[0]))
+                     * max(0.0, min(box[3], o[3]) - max(box[1], o[1])))
+            if inter / area >= OCCLUDED_RATIO:
+                return True
+        return False
+
+    def _occluded(self, active_ids, detections: List[Detection]) -> set:
+        """Missing road users whose predicted image box is largely covered by a detected one."""
+        dl = self.dynamic_logic
+        occluded = set()
+        for tid in dl.track_ids():
+            if tid in active_ids or tid not in self._last_box:
+                continue
+            state = dl.get_state(tid)
+            pixel = self.mapper.world_to_pixel(state.x, state.y) if state is not None else None
+            if pixel is None:
+                continue
+            w, h = self._last_box[tid]
+            box = (pixel[0] - w / 2, pixel[1] - 0.9 * h, pixel[0] + w / 2, pixel[1] + 0.1 * h)
+            if self._covered(box, [d.bbox for d in detections]):
+                occluded.add(tid)
+        return occluded
 
     def step(self, detections: List[Detection]) -> List[WorldObject]:
         dl = self.dynamic_logic
@@ -156,13 +199,18 @@ class WorldTracker:
             center = self._center_from_contact(
                 np.array(self.mapper.pixel_to_world(px, py)), heading, class_name)
 
+            emerging = (dl.existence_of(tid) is None
+                        and self._covered(det.bbox, [d.bbox for d in detections if d.track_id != tid]))
             state = dl.update(tid, center[0], center[1], measurement_cov=cov,
-                              agent="person" if is_person else "vehicle")
+                              agent="person" if is_person else "vehicle", emerging=emerging)
+            self._last_box[tid] = (x2 - x1, y2 - y1)
+            if dl.existence_of(tid) != CONFIRMED:
+                continue                       # a tentative track is a hypothesis: not shown
             objects[tid] = WorldObject(tid, class_name, state.x, state.y, state.heading,
                                        state.vx, state.vy, observed=True,
                                        motion_known=dl.motion_known(tid))
 
-        for tid, state in dl.coast(active_ids).items():
+        for tid, state in dl.coast(active_ids, self._occluded(active_ids, detections)).items():
             objects[tid] = WorldObject(tid, self._class_of(tid), state.x, state.y,
                                        state.heading, state.vx, state.vy, observed=False,
                                        motion_known=dl.motion_known(tid))
@@ -171,10 +219,10 @@ class WorldTracker:
             if dl.get_state(tid) is None:
                 self._hits.pop(tid, None)
                 self._class_votes.pop(tid, None)
+                self._last_box.pop(tid, None)
 
-        visible = {tid: o for tid, o in objects.items() if self._hits[tid] >= MIN_HITS_TO_SHOW}
-        self._resolve_conflicts(visible)
-        return list(visible.values())
+        self._resolve_conflicts(objects)
+        return list(objects.values())
 
     # ------------------------------------------------------------------ consistency
 
@@ -214,9 +262,10 @@ class WorldTracker:
             if self._hits[other] > REIDENTIFIED_MAX_AGE:
                 continue
             objects.pop(stale)
-            dl.remove_vehicle(stale)
+            dl.remove_vehicle(stale, reason="reidentified")
             self._hits.pop(stale, None)
             self._class_votes.pop(stale, None)
+            self._last_box.pop(stale, None)
             self.stats["dropped_stale_coasting"] += 1
 
         # Remaining overlaps are position error: minimum translation, shared in

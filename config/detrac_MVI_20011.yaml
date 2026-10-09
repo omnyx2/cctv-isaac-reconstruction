@@ -49,7 +49,13 @@ dynamic_logic:
   min_moving_speed: 1.5     # m/s; below this velocity never sets heading
   max_yaw_rate_deg: 60.0    # vehicles cannot turn faster than this
   heading_gain: 0.3
-  coast_time: 0.6           # s to bridge missed detections
+  # Existence (conservation law): road users appear and leave only through the exit zone
+  confirm_hits: 3            # detections that confirm a track born in the exit zone / emerging
+  interior_confirm_time: 0.25 # s of detections for a track born inside the view
+  tentative_miss_time: 0.3   # s a tentative track may be missed before it is retracted
+  unexplained_time: 1.0      # s missed in clear view: retracted (weak) or position lost (strong)
+  established_time: 2.0      # s of detections after which a track is not a false detection
+  hidden_max_time: 10.0      # s a track may stay hidden behind other road users
   handoff_distance: 3.0     # m; new track ID inherits a lost track this close
   flow_cell_size: 2.0       # m; local flow field resolution
   motion_window: 1.0        # s of net displacement deciding moving vs parked

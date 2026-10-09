@@ -50,6 +50,7 @@ class WorldPipeline:
             **config.get("dynamic_logic", {})
         )
         self.dynamic_logic.domain = self.context.domain()   # evolution domain of the flows
+        self.dynamic_logic.exit_zone = self.context.exit_zone()   # where road users may appear / leave
 
         simulation = config.get("simulation", {})
         camera = simulation.get("camera") or {}
@@ -86,6 +87,8 @@ class WorldPipeline:
     @property
     def stats(self) -> Counter:
         stats = Counter(self.world_tracker.stats)
+        for _, _, end, *_ in self.dynamic_logic.events:
+            stats[f"ended_{end}"] += 1
         if self.fleet is not None:
             stats["dynamics_snaps"] = self.fleet.total_snaps
             stats["dynamics_separations"] = self.fleet.separations

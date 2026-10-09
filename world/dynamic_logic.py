@@ -7,9 +7,29 @@ Every road user is a hybrid system (world/hybrid.py), two automata in parallel:
                STOPPED: p' = 0, anchor' = k (p - anchor)
                all:     heading' = clip(g (target - heading), +-yaw_rate)
                         target = velocity direction (MOVING) or local traffic flow
-  observation  OBSERVED <--> COASTING --> LOST     (detections, coast_time)
-               COASTING: the motion flow continues without measurements, & p in road domain
-               a new track ID continuing a COASTING track takes over its state (handoff)
+  existence    TENTATIVE --> CONFIRMED <--> HIDDEN --> EXITED | RETRACTED | LOST
+               (and TENTATIVE --> RETRACTED); EXITED once missed for tentative_miss_time
+               in the exit zone (detections flicker there)
+
+Existence is a conservation law: a real vehicle enters and leaves the view only
+through the exit zone (image border, far road, off the road region: RoadContext.
+exit_zone / domain). In between it cannot vanish - when the detector misses it, it is
+HIDDEN and its motion flow continues until it is detected again, re-identified under a
+new ID (handoff) or predicted into the exit zone (EXITED).
+
+A detection is first only a hypothesis (TENTATIVE): the law does not apply yet, and a
+false detection that disappears again is RETRACTED. A track born inside the view (not
+in the exit zone, not at the start of the video, not emerging from behind another
+road user) needs more evidence before it is CONFIRMED. A CONFIRMED track that then
+disappears where nothing occludes it contradicts the law: with little evidence it was
+a false detection after all (RETRACTED, kept in `events` so analyses can drop it); with
+much evidence the vehicle exists but not where it is predicted - the detector would
+see it there - so its position is LOST (usually it continues under a new ID that the
+handoff gate did not catch; also in `events`). Occluded, a track stays HIDDEN up to
+hidden_max_time.
+
+Per frame: observed  (jump ; predict ; update ; motion jump ; flows)
+           missed    (flow ; jump)  - the existence guards judge the predicted position
 
 The road domain and the metric come from the calibration context
 (world/context): measurements arrive in road meters with their covariance from the
@@ -35,8 +55,10 @@ from world.hybrid import Flow, HybridAutomaton, Transition
 
 # Motion modes
 UNKNOWN, MOVING, STOPPED = "unknown", "moving", "stopped"
-# Observation modes
-OBSERVED, COASTING, LOST = "observed", "coasting", "lost"
+# Existence modes
+TENTATIVE, CONFIRMED, HIDDEN = "tentative", "confirmed", "hidden"
+EXITED, RETRACTED, LOST = "exited", "retracted", "lost"
+ENDED = (EXITED, RETRACTED, LOST)
 
 
 def wrap_angle(angle: float) -> float:
@@ -234,7 +256,12 @@ class _Track:
         # occlusion makes a parked car's bbox creep, which a Kalman filter reads as motion
         self.history = deque(maxlen=window + 1)
         self.mode = UNKNOWN                 # motion automaton: until a full window has been observed
-        self.observation = OBSERVED         # observation automaton
+        self.existence = TENTATIVE          # existence automaton
+        self.hits = 1                       # frames detected
+        self.misses = 0                     # consecutive frames not detected
+        self.hidden = 0                     # frames HIDDEN since the last detection
+        self.unexplained = 0                # of those, frames with nothing occluding it
+        self.confirm_hits = 1               # hits needed to confirm (set at birth)
         self.anchor = kf.state[:2].copy()   # Smoothed position while stationary
         self.offset = np.zeros(2)           # Decaying display offset across mode switches
 
@@ -288,36 +315,74 @@ def motion_automaton() -> HybridAutomaton:
 
 
 @dataclass
-class _ObservationInput:
+class _ExistenceLimits:
+    tentative_misses: int            # frames a tentative track may be missed
+    exit_misses: int                 # frames missed in the exit zone before it has left
+    unexplained: int                 # frames missed with nothing occluding it
+    established_hits: int            # hits after which a track is not a false detection
+    hidden_max: int                  # frames a track may stay hidden at all
+
+
+@dataclass
+class _ExistenceInput:
+    """What the existence automaton's guards see in one frame."""
     track: "_Track"
     detected: bool
-    coast_frames: int
+    in_exit_zone: bool = False       # predicted position where road users may leave the view
+    occluded: bool = False           # something in front of it explains the missing detection
+    limits: Optional[_ExistenceLimits] = None
 
 
-def observation_automaton() -> HybridAutomaton:
-    """OBSERVED <-> COASTING -> LOST: a missing detection is bridged for coast_time."""
+def existence_automaton() -> HybridAutomaton:
+    """TENTATIVE -> CONFIRMED <-> HIDDEN -> EXITED | RETRACTED | LOST (see the module docstring).
+    Transitions are listed in priority order; the counters are updated by the resets."""
 
-    def miss(c: _ObservationInput):
-        c.track.lost_frames += 1
+    def detected(c: _ExistenceInput):
+        c.track.hits += 1
+        c.track.misses = c.track.hidden = c.track.unexplained = 0
 
-    def found(c: _ObservationInput):
-        c.track.lost_frames = 0
+    def missed(c: _ExistenceInput):
+        c.track.misses += 1
+
+    def hidden(c: _ExistenceInput):
+        c.track.misses += 1
+        c.track.hidden += 1
+        if not c.occluded and not c.in_exit_zone:     # the exit zone explains a miss too
+            c.track.unexplained += 1
+
+    def contradicted(c: _ExistenceInput) -> bool:
+        return not c.occluded and c.track.unexplained + 1 >= c.limits.unexplained
 
     return HybridAutomaton(
-        "road_user_observation",
-        modes={OBSERVED: Flow("measurement update each frame"),
-               COASTING: Flow("motion flow without measurements", "p in road & lost <= coast"),
-               LOST: Flow("removed")},
-        initial=OBSERVED,
+        "road_user_existence",
+        modes={TENTATIVE: Flow("motion flow; not shown (a hypothesis)"),
+               CONFIRMED: Flow("measurement update each frame"),
+               HIDDEN: Flow("motion flow without measurements", "p in view & not in exit zone"),
+               EXITED: Flow("removed: left the view"),
+               RETRACTED: Flow("removed: was a false detection"),
+               LOST: Flow("removed: exists, but its position is no longer known")},
+        initial=TENTATIVE,
         transitions=[
-            Transition(OBSERVED, OBSERVED, lambda c: c.detected, found, "detected", "detected", "lost := 0"),
-            Transition(OBSERVED, COASTING, lambda c: not c.detected, miss, "missed", "not detected", "lost := lost + 1"),
-            Transition(COASTING, OBSERVED, lambda c: c.detected, found, "redetected",
-                       "detected (same ID, or a new ID within the handoff gate)", "lost := 0"),
-            Transition(COASTING, LOST, lambda c: not c.detected and c.track.lost_frames >= c.coast_frames,
-                       miss, "expired", "not detected & lost >= coast_frames", "lost := lost + 1"),
-            Transition(COASTING, COASTING, lambda c: not c.detected, miss, "missed", "not detected",
-                       "lost := lost + 1"),
+            Transition(TENTATIVE, CONFIRMED, lambda c: c.detected and c.track.hits + 1 >= c.track.confirm_hits,
+                       detected, "confirmed", "detected & hits >= confirm_hits (more when born inside the view)",
+                       "hits += 1"),
+            Transition(TENTATIVE, TENTATIVE, lambda c: c.detected, detected, "detected", "detected", "hits += 1"),
+            Transition(TENTATIVE, RETRACTED, lambda c: c.track.misses + 1 > c.limits.tentative_misses, missed,
+                       "vanished", "not detected & misses > tentative_misses"),
+            Transition(TENTATIVE, TENTATIVE, lambda c: True, missed, "missed", "not detected", "misses += 1"),
+            Transition(CONFIRMED, CONFIRMED, lambda c: c.detected, detected, "detected", "detected", "hits += 1"),
+            Transition(CONFIRMED, HIDDEN, lambda c: True, hidden, "hides", "not detected",
+                       "hidden += 1; unexplained += not (occluded or in exit zone)"),
+            Transition(HIDDEN, CONFIRMED, lambda c: c.detected, detected, "redetected",
+                       "detected (same ID, or a new ID within the handoff gate)", "misses, hidden := 0"),
+            Transition(HIDDEN, EXITED, lambda c: c.in_exit_zone and c.track.misses + 1 >= c.limits.exit_misses,
+                       missed, "exits", "p in exit zone & misses >= exit_misses"),
+            Transition(HIDDEN, RETRACTED, lambda c: contradicted(c) and c.track.hits < c.limits.established_hits,
+                       missed, "contradicted", "not occluded for unexplained_time & hits < established_hits"),
+            Transition(HIDDEN, LOST, lambda c: contradicted(c) or c.track.hidden + 1 >= c.limits.hidden_max, missed,
+                       "position lost", "not occluded for unexplained_time (it is somewhere else), or hidden >= hidden_max"),
+            Transition(HIDDEN, HIDDEN, lambda c: True, hidden, "hides", "not detected",
+                       "hidden += 1; unexplained += not (occluded or in exit zone)"),
         ])
 
 
@@ -328,8 +393,8 @@ class DynamicLogic:
     Per frame call order:
         begin_frame(active_ids)
         update(...) for each detection
-        coast(active_ids)       -> states of vehicles bridged through a missed detection
-        cleanup_stale(active_ids)
+        coast(active_ids, occluded) -> states of HIDDEN road users
+        cleanup_stale(active_ids)       removes ended tracks (EXITED, RETRACTED, LOST)
     """
 
     def __init__(
@@ -342,7 +407,7 @@ class DynamicLogic:
         min_moving_speed: float = 1.5,
         max_yaw_rate_deg: float = 60.0,
         heading_gain: float = 0.3,
-        coast_time: float = 0.6,
+        coast_time: Optional[float] = None,
         handoff_distance: float = 3.0,
         flow_cell_size: float = 2.0,
         pixel_noise: float = 1.0,
@@ -350,7 +415,15 @@ class DynamicLogic:
         motion_window: float = 1.0,
         anchor_smoothing: float = 0.05,
         outlier_gate: float = 13.8,
-        pedestrian: Optional[dict] = None
+        pedestrian: Optional[dict] = None,
+        confirm_hits: int = 3,
+        interior_confirm_time: float = 0.25,
+        tentative_miss_time: float = 0.3,
+        unexplained_time: float = 1.0,
+        established_time: float = 2.0,
+        hidden_max_time: float = 10.0,
+        startup_time: float = 0.5,
+        emerge_distance: float = 4.0
     ):
         """
         Args:
@@ -362,8 +435,10 @@ class DynamicLogic:
             min_moving_speed: Speed (m/s) below which velocity never sets heading
             max_yaw_rate_deg: Max heading change rate (deg/s) once heading is locked
             heading_gain: Fraction of the heading error corrected per frame
-            coast_time: Seconds a vehicle is predicted through missing detections
-            handoff_distance: Max distance (m) to hand a lost track to a new track ID
+            coast_time: Deprecated (the fixed coasting time is replaced by the
+                existence automaton); accepted so older configs still load
+            handoff_distance: Max distance (m) to hand a hidden track to a new track ID,
+                growing by this much per second hidden
             flow_cell_size: Local flow field cell size (m)
             pixel_noise, pixel_noise_ratio: Detection noise model in pixels
                 (sigma = pixel_noise + pixel_noise_ratio * bbox height); read by callers
@@ -376,6 +451,19 @@ class DynamicLogic:
             pedestrian: Overrides of process_noise, min_moving_speed, max_yaw_rate_deg
                 and heading_gain for agent="person" (people walk ~1.3 m/s and turn on
                 the spot, so vehicle limits would freeze them)
+            confirm_hits: Detections that confirm a track born where road users appear
+                (exit zone, video start, emerging from behind another road user, a
+                person next to a stopped vehicle)
+            interior_confirm_time: Seconds of detections that confirm a track born
+                anywhere else (inside the view: more likely a false detection)
+            tentative_miss_time: Seconds a tentative track may be missed before it is retracted,
+                and a track in the exit zone before it has left (detections flicker there)
+            unexplained_time: Seconds a hidden track may be missed with nothing occluding it
+            established_time: Seconds of detections after which a track is not retracted
+                as a false detection (it stays hidden instead)
+            hidden_max_time: Seconds a track may stay hidden (occluded) before it is given up (LOST)
+            startup_time: Seconds after a start or reset in which tracks may be born anywhere
+            emerge_distance: m from a stopped vehicle within which a person may appear
         """
         self.process_noise = process_noise
         self.measurement_noise = measurement_noise
@@ -386,7 +474,20 @@ class DynamicLogic:
         self.min_moving_speed = min_moving_speed
         self.max_yaw_step = np.radians(max_yaw_rate_deg) * self.dt
         self.heading_gain = heading_gain
-        self.coast_frames = int(round(coast_time * fps))
+        def frames(seconds: float, least: int = 1) -> int:
+            return max(least, int(round(seconds * fps)))
+        self.confirm_hits = confirm_hits
+        self.interior_confirm_hits = max(confirm_hits, frames(interior_confirm_time))
+        self.limits = _ExistenceLimits(tentative_misses=frames(tentative_miss_time),
+                                       exit_misses=frames(tentative_miss_time),
+                                       unexplained=frames(unexplained_time, 2),
+                                       established_hits=frames(established_time, confirm_hits + 1),
+                                       hidden_max=frames(hidden_max_time, 2))
+        self.startup_frames = frames(startup_time)
+        self.emerge_distance = emerge_distance
+        self.frame = 0
+        # (frame, track_id, end mode, x, y, hits): how every track ended
+        self.events: list = []
         self.handoff_distance = handoff_distance
         self.pixel_noise = pixel_noise
         self.pixel_noise_ratio = pixel_noise_ratio
@@ -408,13 +509,15 @@ class DynamicLogic:
         self._tracks: Dict[int, _Track] = {}
         self._active_ids: Optional[Set[int]] = None
         self.motion = motion_automaton()
-        self.observation = observation_automaton()
-        # Evolution domain of coasting (road plane point -> inside the road). None = whole plane.
+        self.existence = existence_automaton()
+        # Evolution domain (road plane point -> inside the road region). None = whole plane.
         self.domain: Optional[Callable[[float, float], bool]] = None
+        # Where road users may appear and leave the view (RoadContext.exit_zone). None = nowhere known.
+        self.exit_zone: Optional[Callable[[float, float], bool]] = None
 
     def describe(self) -> str:
-        """The road-user hybrid automata (motion x observation)."""
-        return self.motion.describe() + "\n\n" + self.observation.describe()
+        """The road-user hybrid automata (motion x existence)."""
+        return self.motion.describe() + "\n\n" + self.existence.describe()
 
     # ------------------------------------------------------------------ frame API
 
@@ -422,6 +525,7 @@ class DynamicLogic:
         """Declare which track IDs are detected this frame (enables handoff)."""
         self._active_ids = set(active_ids)
         self.flow.step()
+        self.frame += 1
 
     def update(
         self,
@@ -431,7 +535,8 @@ class DynamicLogic:
         vx: float = 0.0,
         vy: float = 0.0,
         measurement_cov: Optional[np.ndarray] = None,
-        agent: str = "vehicle"
+        agent: str = "vehicle",
+        emerging: bool = False
     ) -> VehicleState:
         """
         Update vehicle state with new measurement.
@@ -444,6 +549,8 @@ class DynamicLogic:
             measurement_cov: 2x2 position covariance (m^2), e.g. from
                 CoordinateMapper.position_covariance
             agent: "vehicle" or "person" (selects the motion profile)
+            emerging: the detection appears from behind another road user (its box
+                is largely covered by another one): a birth inside the view is expected
 
         Returns:
             Smoothed vehicle state
@@ -462,40 +569,47 @@ class DynamicLogic:
                 track = _Track(kf, self.default_heading if heading is None else heading,
                                self.motion_window, agent, profile)
                 track.history.append(kf.state[:2].copy())
+                track.confirm_hits = (self.confirm_hits if self._birth_expected(x, y, agent, emerging)
+                                      else self.interior_confirm_hits)
+                if track.confirm_hits <= 1:
+                    track.existence = CONFIRMED
                 self._tracks[track_id] = track
                 return self._state(track)
 
         track = self._tracks[track_id]
-        track.observation = self.observation.jump(track.observation, _ObservationInput(track, True, self.coast_frames))
+        track.existence = self.existence.jump(track.existence, _ExistenceInput(track, True, limits=self.limits))
         track.kf.predict()
         track.kf.update(measurement, measurement_cov, self.outlier_gate)
         self._update_motion(track)
         self._update_heading(track)
         return self._state(track)
 
-    def coast(self, active_ids: Set[int]) -> Dict[int, VehicleState]:
-        """Predict vehicles missing this frame; returns those still within coast_time."""
-        coasting = {}
+    def coast(self, active_ids: Set[int], occluded: Optional[Set[int]] = None) -> Dict[int, VehicleState]:
+        """Road users not detected this frame: the motion flow (a stopped one stays put),
+        then the existence jump on the predicted position. Returns the HIDDEN ones.
+        `occluded`: IDs whose missing detection is explained by something in front."""
+        occluded = occluded or set()
+        hidden = {}
         for tid, track in self._tracks.items():
-            if tid in active_ids:
+            if tid in active_ids or track.existence in ENDED:
                 continue
-            track.observation = self.observation.jump(track.observation,
-                                                      _ObservationInput(track, False, self.coast_frames))
-            if track.observation == COASTING:
-                if track.mode != STOPPED:
-                    track.kf.predict()  # A stationary vehicle simply stays put
-                    if self.domain is not None and not self.domain(*track.kf.state[:2]):
-                        track.observation = LOST     # left the evolution domain (off the road / out of view)
-                        continue
-                coasting[tid] = self._state(track)
-        return coasting
+            if track.mode != STOPPED:
+                track.kf.predict()
+            x, y = track.kf.state[:2]
+            in_zone = ((self.exit_zone is not None and self.exit_zone(x, y))
+                       or (self.domain is not None and not self.domain(x, y)))
+            track.existence = self.existence.jump(
+                track.existence, _ExistenceInput(track, False, bool(in_zone), tid in occluded, self.limits))
+            if track.existence == HIDDEN:
+                hidden[tid] = self._state(track)
+        return hidden
 
     def cleanup_stale(self, active_ids: set):
-        """Drop vehicles that have been missing for longer than coast_time."""
-        stale = [tid for tid, track in self._tracks.items()
-                 if tid not in active_ids and track.observation == LOST]
-        for tid in stale:
-            del self._tracks[tid]
+        """Drop road users that ended (EXITED, RETRACTED, LOST); `events` records how."""
+        for tid in [t for t, track in self._tracks.items() if t not in active_ids and track.existence in ENDED]:
+            track = self._tracks.pop(tid)
+            x, y = track.kf.state[:2]
+            self.events.append((self.frame, tid, track.existence, float(x), float(y), track.hits))
 
     # ------------------------------------------------------------------ internals
 
@@ -507,11 +621,11 @@ class DynamicLogic:
 
         best_id, best_d2 = None, 9.21  # chi-square 99%, 2 DOF
         for tid, track in self._tracks.items():
-            if tid in self._active_ids or track.agent != agent:
+            if tid in self._active_ids or track.agent != agent or track.existence != HIDDEN:
                 continue
             predicted = track.kf.F @ track.kf.state
             offset = measurement - predicted[:2]
-            if np.hypot(*offset) > self.handoff_distance:
+            if np.hypot(*offset) > self.handoff_distance * (1.0 + track.hidden * self.dt):
                 continue
             S = track.kf.P[:2, :2] + (measurement_cov if measurement_cov is not None
                                       else track.kf.R)
@@ -519,6 +633,32 @@ class DynamicLogic:
             if d2 < best_d2:
                 best_id, best_d2 = tid, d2
         return best_id
+
+    def _birth_expected(self, x: float, y: float, agent: str, emerging: bool) -> bool:
+        """A new road user may appear here: the video (re)started, the exit zone, out of
+        an occlusion, a person next to a stopped vehicle (getting out), or near a road
+        user of its kind that is hidden or whose position was just lost (the tracker
+        switched its ID beyond the handoff gate: the same vehicle, not a new one)."""
+        if self.frame <= self.startup_frames or emerging:
+            return True
+        if (self.exit_zone is not None and self.exit_zone(x, y)) or (self.domain is not None and not self.domain(x, y)):
+            return True
+        reach = 2.0 * self.handoff_distance
+        for t in self._tracks.values():
+            if (t.agent == agent and t.existence == HIDDEN
+                    and np.hypot(*(t.kf.state[:2] - (x, y))) < reach * (1.0 + t.hidden * self.dt)):
+                return True
+        recent = self.frame - self.limits.unexplained
+        for frame, _, end, ex, ey, _ in reversed(self.events):
+            if frame < recent:
+                break
+            if end == LOST and np.hypot(ex - x, ey - y) < 2.0 * reach:
+                return True
+        if agent == "person":
+            return any(t.agent != "person" and t.mode == STOPPED and t.existence in (CONFIRMED, HIDDEN)
+                       and np.hypot(*(t.kf.state[:2] - (x, y))) < self.emerge_distance
+                       for t in self._tracks.values())
+        return False
 
     def _update_motion(self, track: _Track):
         """Motion automaton jump (moving/stationary with hysteresis on windowed net
@@ -612,6 +752,13 @@ class DynamicLogic:
             return None
         return self._state(self._tracks[track_id])
 
+    def existence_of(self, track_id: int) -> Optional[str]:
+        track = self._tracks.get(track_id)
+        return None if track is None else track.existence
+
+    def track_ids(self):
+        return list(self._tracks)
+
     def motion_known(self, track_id: int) -> bool:
         """True once the moving/stationary mode (and so the heading) is established."""
         track = self._tracks.get(track_id)
@@ -622,15 +769,20 @@ class DynamicLogic:
         track = self._tracks.get(track_id)
         return None if track is None else track.kf.P[:2, :2].copy()
 
-    def remove_vehicle(self, track_id: int):
-        """Remove a vehicle from tracking."""
-        self._tracks.pop(track_id, None)
+    def remove_vehicle(self, track_id: int, reason: Optional[str] = None):
+        """Remove a vehicle from tracking; with a `reason` the removal is kept in `events`
+        (e.g. "reidentified": the same vehicle continues under a new ID)."""
+        track = self._tracks.pop(track_id, None)
+        if track is not None and reason:
+            x, y = track.kf.state[:2]
+            self.events.append((self.frame, track_id, reason, float(x), float(y), track.hits))
 
     def reset(self):
         """Reset all tracks and the learned flow."""
         self._tracks.clear()
         self.flow.reset()
         self._active_ids = None
+        self.frame = 0
 
 
 if __name__ == "__main__":

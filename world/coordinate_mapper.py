@@ -44,6 +44,18 @@ class CoordinateMapper:
         p = H @ np.array([pixel_x, pixel_y, 1.0])
         return (float(p[0] / p[2]), float(p[1] / p[2]))
 
+    def world_to_pixel(self, x: float, y: float) -> Optional[Tuple[float, float]]:
+        """Image pixel (current frame) of a road point; None on the horizon line."""
+        if self.homography is None:
+            raise RuntimeError("CoordinateMapper is not calibrated")
+        H = self.homography
+        if self.frame_transform is not None:
+            H = H @ self.frame_transform
+        p = np.linalg.inv(H) @ np.array([x, y, 1.0])
+        if abs(p[2]) < 1e-12:
+            return None
+        return (float(p[0] / p[2]), float(p[1] / p[2]))
+
     def position_covariance(self, pixel_x: float, pixel_y: float, pixel_sigma: float) -> np.ndarray:
         """
         World-space covariance (2x2, m^2) of a ground point measured with isotropic

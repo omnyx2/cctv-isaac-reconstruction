@@ -73,6 +73,7 @@ class DrivenPose:
     steer: float
     target_error: float     # m, distance to the perceived position this frame
     driven: bool = True     # False = shown as perceived (pedestrian / motion not known yet)
+    observed: bool = True   # False = predicted while hidden (position uncertain)
 
 
 class KinematicBicycle:
@@ -214,7 +215,7 @@ class FleetDriver:
 
             s = follower.model.s
             poses.append(DrivenPose(o.track_id, o.class_name, s.x, s.y, s.yaw,
-                                    s.speed, s.steer, error))
+                                    s.speed, s.steer, error, observed=getattr(o, "observed", True)))
 
         for tid in [t for t in self._followers if t not in alive]:
             del self._followers[tid]
@@ -230,9 +231,11 @@ class FleetDriver:
           - a stopped vehicle may be shifted in any direction
           - a moving vehicle only along its heading (it cannot slide sideways)
           - a pedestrian always yields to a vehicle
+          - a hidden vehicle (predicted, not detected) yields in any direction: its
+            position is the uncertain one, and it must not collide with a seen one
         """
         def mobility(p: DrivenPose, axis: np.ndarray) -> Tuple[float, np.ndarray]:
-            if p.class_name == "person" or not p.driven:
+            if p.class_name == "person" or not p.driven or not p.observed:
                 return 1e3, axis
             if p.speed < self.gains.stationary_speed:
                 return 1.0, axis
