@@ -80,7 +80,7 @@ class _Job:
 
 
 class VLMAnalyzer:
-    def __init__(self, client: VLMClient, interval_s: float = 2.0, prompt: str = SCENE_PROMPT):
+    def __init__(self, client: VLMClient, interval_s: float = 4.0, prompt: str = SCENE_PROMPT):
         self.client = client
         self.interval_s = interval_s
         self.prompt = prompt
@@ -177,5 +177,5 @@ def create_analyzer(config: dict) -> Optional[VLMAnalyzer]:
     vlm = config.get("vlm") or {}
     if not vlm.get("enabled", False):
         return None
-    return VLMAnalyzer(create_client(vlm), interval_s=vlm.get("interval_s", 2.0),
+    return VLMAnalyzer(create_client(vlm), interval_s=vlm.get("interval_s", 4.0),
                        prompt=vlm.get("prompt") or SCENE_PROMPT)

@@ -5,7 +5,7 @@ backend is provided (no stand-in): when the server is not reachable, `check()`
 says why and the analyzer stays off.
 
 Ollama (https://ollama.com) serves local models such as LLaVA over HTTP:
-    ollama pull llava:7b        # once
+    ollama pull qwen2.5vl:7b    # once
     ollama serve                # usually running as a service already
 API: POST /api/generate {"model", "prompt", "images": [base64 JPEG], "stream": false,
 "format": "json"} -> {"response": "<text>", ...}; GET /api/tags lists pulled models.
@@ -50,8 +50,8 @@ def encode_jpeg(image_bgr: np.ndarray, max_side: int, quality: int = 90) -> byte
 class OllamaClient(VLMClient):
     name = "ollama"
 
-    def __init__(self, url: str = "http://localhost:11434", model: str = "llava:7b",
-                 max_side: int = 672, timeout_s: float = 60.0, json_format: bool = True):
+    def __init__(self, url: str = "http://localhost:11434", model: str = "qwen2.5vl:7b",
+                 max_side: int = 1344, timeout_s: float = 60.0, json_format: bool = True):
         self.url = url.rstrip("/")
         self.model = model
         self.max_side = max_side

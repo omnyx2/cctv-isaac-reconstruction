@@ -35,7 +35,7 @@ C:\isaacsim\isaac-sim.bat --ext-folder exts --enable cctv.dual_tracking
 
 ### VLM 장면 분석 (선택)
 
-YOLO와 별개로 비전-언어 모델이 장면을 설명한다(사고·연기·도로 위 사람 등). Ollama를 설치하고 `ollama pull llava:7b`를 한 뒤
+YOLO와 별개로 비전-언어 모델이 장면을 설명한다(사고·연기·도로 위 사람 등). Ollama를 설치하고 `ollama pull qwen2.5vl:7b`를 한 뒤
 설정에서 `vlm.enabled: true`로 켠다. 오프라인 분석: `C:\isaacsim\kit\python\python.exe tools/vlm_analyze.py --config <설정>`.
 
 ## 문서

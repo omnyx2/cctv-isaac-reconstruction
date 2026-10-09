@@ -36,8 +36,8 @@ mapping:
     - [2.42, 22.1]
 stabilization: {enabled: false}
 display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
-vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'llava:7b',
-  interval_s: 2.0, max_side: 672, timeout_s: 60.0}
+vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'qwen2.5vl:7b',
+  interval_s: 4.0, max_side: 1344, timeout_s: 60.0}
 accident: {contact_s: 19.98, sequence: r09_s01, camera: s050_camera_basler_south_50mm,
   description: 'white van stopped in the left lane since the start of the sequence
     (traffic swerves around it); a yellow car squeezes between the van and the median

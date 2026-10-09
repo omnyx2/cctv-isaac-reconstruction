@@ -42,7 +42,7 @@ def main():
     fps = args.fps or config.get("video", {}).get("fps")
     if not video:
         parser.error("give --video or a --config with video.path")
-    interval = args.interval or vlm.get("interval_s", 2.0)
+    interval = args.interval or vlm.get("interval_s", 4.0)
 
     analyzer = VLMAnalyzer(create_client(vlm), interval_s=interval, prompt=vlm.get("prompt") or SCENE_PROMPT)
     reason = analyzer.client.check()
