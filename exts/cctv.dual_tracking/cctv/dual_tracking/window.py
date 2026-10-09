@@ -23,6 +23,8 @@ class ControlWindow:
         self._on_start, self._on_pause, self._on_restart, self._on_stop = on_start, on_pause, on_restart, on_stop
         self.configs: List[Path] = runnable_configs(project_root)
         self.video_override: Optional[str] = None
+        self._calib_lines: List[str] = []
+        self._lanes_lines: List[str] = []
         self._picker = None
         self._provider = ui.ByteImageProvider()
 
@@ -49,7 +51,8 @@ class ControlWindow:
                     self._seconds = ui.FloatField(width=40)
                     self._seconds.model.set_value(20.0)
                 self._calib_status = ui.Label("", height=18, word_wrap=True)
-                with ui.CollapsableFrame("Calibration conditions", collapsed=True, height=0):
+                self._lanes_status = ui.Label("", height=18, word_wrap=True)
+                with ui.CollapsableFrame("Calibration conditions / lane markings", collapsed=True, height=0):
                     with ui.ScrollingFrame(height=140):
                         self._calib_log = ui.Label("", word_wrap=True, alignment=ui.Alignment.LEFT_TOP,
                                                    style={"font_size": 13})
@@ -193,7 +196,15 @@ class ControlWindow:
         color = {AutoCalibration.RUNNING: 0xFF66DDFF, AutoCalibration.DONE: 0xFF66FF66}.get(calib.state, 0xFF6666FF)
         self._calib_status.text = f"Calibration [{calib.camera_id}] {calib.state}: {calib.progress}"
         self._calib_status.style = {"color": color}
-        self._calib_log.text = "\n".join(calib.lines)
+        self._calib_lines = calib.lines
+        self._calib_log.text = "\n".join(self._calib_lines + self._lanes_lines)
+
+    def show_lanes(self, job):
+        color = {job.RUNNING: 0xFF66DDFF, job.DONE: 0xFF66FF66}.get(job.state, 0xFF6666FF)
+        self._lanes_status.text = f"Lane markings {job.state}: {job.progress}"
+        self._lanes_status.style = {"color": color}
+        self._lanes_lines = job.lines
+        self._calib_log.text = "\n".join(self._calib_lines + self._lanes_lines)
 
     def show_frame(self, bgr: np.ndarray):
         h, w = bgr.shape[:2]

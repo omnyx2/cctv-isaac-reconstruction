@@ -331,3 +331,75 @@ def draw_debug(background: np.ndarray, lanes: LaneLines, points: dict) -> np.nda
         cv2.drawMarker(vis, (x, y), color, cv2.MARKER_CROSS, 24, 2)
         cv2.putText(vis, name, (x + 8, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
     return vis
+
+
+# ------------------------------------------------------------------ dash chains (scene drawing)
+
+CHAIN_LATERAL_PX = 4.0       # blobs within this lateral distance of one line through the VP
+CHAIN_MIN_BLOBS = 3          # a dashed line: at least this many collinear blobs
+
+
+def dash_chains(background: np.ndarray, lanes: LaneLines, road: Optional[np.ndarray] = None,
+                catalog: Optional[MarkingCatalog] = None) -> Tuple[np.ndarray, List[str]]:
+    """Marking pieces too short to pass the elongation test on their own — far dashes,
+    foreshortened by a long lens — accepted when at least CHAIN_MIN_BLOBS of them (or
+    they and a detected segment) line up on one line through the lane vanishing point:
+    a dashed lane line. Each becomes a segment along that line. For drawing the scene
+    only; the calibration uses the strict segments (lane_lines)."""
+    empty = (np.zeros((0, 4), np.float32), [])
+    if lanes.vanishing_point is None:
+        return empty
+    vx, vy = lanes.vanishing_point
+    masks = paint_masks(background, road, catalog)
+    union = np.zeros(background.shape[:2], bool)
+    for m in masks.values():
+        union |= m
+    union &= lanes.mask == 0
+    lum = cv2.cvtColor(background, cv2.COLOR_BGR2LAB)[..., 0]
+    count, labels, stats, centroids = cv2.connectedComponentsWithStats(union.astype(np.uint8) * 255, connectivity=8)
+    blobs = []                                    # (angle, distance, segment)
+    for i in range(1, count):
+        x, y, bw, bh, area = stats[i]
+        cx, cy = centroids[i]
+        if area < MIN_MARK_AREA or area > MAX_MARK_AREA or cy < vy + 5:
+            continue
+        ys, xs = np.nonzero(labels[y:y + bh, x:x + bw] == i)
+        if np.std(lum[ys + y, xs + x]) > MAX_PAINT_STD:
+            continue
+        d = np.hypot(cx - vx, cy - vy)
+        u = np.array([cx - vx, cy - vy]) / d
+        rel = np.column_stack([xs + x - cx, ys + y - cy])
+        along, across = rel @ u, rel @ np.array([-u[1], u[0]])
+        if np.ptp(along) < np.ptp(across):         # wider than long towards the VP: not a dash
+            continue
+        t0, t1 = along.min() - 0.5, along.max() + 0.5
+        blobs.append((float(np.arctan2(cx - vx, cy - vy)), float(d),
+                      [cx + u[0] * t0, cy + u[1] * t0, cx + u[0] * t1, cy + u[1] * t1]))
+    if not blobs:
+        return empty
+    anchors = []                                  # detected segments: (angle, distance)
+    for x1, y1, x2, y2 in lanes.segments:
+        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+        if cy > vy + 5:
+            anchors.append((float(np.arctan2(cx - vx, cy - vy)), float(np.hypot(cx - vx, cy - vy))))
+    angles = np.array([b[0] for b in blobs])
+    dists = np.array([b[1] for b in blobs])
+    segments = []
+    for a, d, seg in blobs:
+        near = np.abs(angles - a) * np.maximum(dists, d) < CHAIN_LATERAL_PX
+        support = int(near.sum()) - 1 + sum(abs(aa - a) * max(dd, d) < CHAIN_LATERAL_PX for aa, dd in anchors)
+        if support >= CHAIN_MIN_BLOBS - 1:
+            segments.append(seg)
+    segments = np.array(segments, np.float32).reshape(-1, 4)
+    return segments, segment_paints(segments, masks)
+
+
+def scene_markings(image_to_road: np.ndarray, background: np.ndarray, lanes: LaneLines, horizon_y: float,
+                   road: Optional[np.ndarray] = None, catalog: Optional[MarkingCatalog] = None) -> List[dict]:
+    """The marking layout for the simulation scene: the detected segments and the
+    dash chains (dash_chains), on the road in meters (markings_on_road)."""
+    extra, paints = dash_chains(background, lanes, road, catalog)
+    both = LaneLines(lanes.mask, np.vstack([lanes.segments.reshape(-1, 4), extra]).astype(np.float32),
+                     lanes.vanishing_point,
+                     paints=list(lanes.paints or ["white"] * len(lanes.segments)) + list(paints))
+    return markings_on_road(image_to_road, both, horizon_y)

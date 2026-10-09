@@ -96,7 +96,14 @@ class CCTVDualTracker:
         fps = self.video_player.fps
         size = (self.video_player.width, self.video_player.height)
 
-        simulation = self.config.get("simulation", {})
+        simulation = dict(self.config.get("simulation", {}))
+        if not simulation.get("lane_markings"):
+            # Extracted automatically (tools/extract_lanes.py, run by the Isaac Sim extension)
+            from world.context.lane_cache import load_cached
+            cached = load_cached(self.config, Path(__file__).resolve().parent)
+            if cached:
+                simulation["lane_markings"] = cached
+                print(f"Lane markings: {len(cached)} pieces from the cache")
         self.scene_manager = SceneManager(
             width=self.window_size[0], height=self.window_size[1],
             **{k: v for k, v in simulation.items() if k in SCENE_KEYS})

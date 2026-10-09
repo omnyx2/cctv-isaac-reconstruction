@@ -1,12 +1,20 @@
-"""Automatic calibration of a video picked in the extension, without blocking Kit.
+"""Background jobs of the extension that need YOLO: automatic calibration of a video
+picked without a config, and lane-marking extraction for a scenario without markings.
 
-Runs tools/calibrate_video.py in its own process (YOLO and CUDA stay out of the
-renderer, as for the perception process) and follows its "[calib]" progress lines:
-the stored calibration of the same camera when the view is unchanged, otherwise the
-lane markings (METRIC) of the first seconds of the video. On success the tool has
-written config/auto_<recording>.yaml, which the extension then switches the replay to;
-the calibration itself is stored per camera (data/calibrations/<camera id>/), so the
-next recording of the same camera reuses it while the view is unchanged.
+Each runs a tool in its own process (YOLO and CUDA stay out of the renderer, as for
+the perception process) and follows its "[<prefix>] ..." progress lines, never
+blocking Kit.
+
+AutoCalibration (tools/calibrate_video.py): the stored calibration of the same camera
+when the view is unchanged, otherwise the lane markings (METRIC) of the first seconds
+of the video. On success the tool has written config/auto_<recording>.yaml (with the
+lane markings), which the extension then switches the replay to; the calibration
+itself is stored per camera (data/calibrations/<camera id>/), so the next recording of
+the same camera reuses it while the view is unchanged.
+
+LaneExtraction (tools/extract_lanes.py): the marking pieces of the video projected with
+the scenario's own homography, cached in data/cache/lanes/ (world/context/lane_cache.py);
+the extension then draws them into the running scene.
 """
 
 import os
@@ -37,25 +45,21 @@ def video_key(video: str) -> str:
     return f"{parent.name}_{path.name}" if parent.name else path.name
 
 
-class AutoCalibration:
-    RUNNING, DONE, FAILED, CANCELLED = "running", "done", "failed", "cancelled"
+class BackgroundTool:
+    """A project tool run in its own process; `progress`, `lines` (its messages) and
+    `state` are read on Kit's update."""
 
-    def __init__(self, project_root: Path, video: str, fps: Optional[float] = None, seconds: float = 20.0,
-                 standards: Sequence[str] = ()):
+    RUNNING, DONE, FAILED, CANCELLED = "running", "done", "failed", "cancelled"
+    PREFIX = ""
+    NOT_FOUND = "no result"     # message for exit code 2
+
+    def __init__(self, project_root: Path, tool: str, args: Sequence[str]):
         self.project_root = Path(project_root)
-        self.video = video
-        self.camera_id = camera_id_for(video)
-        self.config_path = self.project_root / "config" / f"auto_{video_key(video)}.yaml"
         self.state = self.RUNNING
         self.lines: List[str] = []
         self.progress = "starting"
         python = perception_python() or "python"
-        cmd = [python, "-u", str(self.project_root / "tools" / "calibrate_video.py"), "--video", str(video),
-               "--camera-id", self.camera_id, "--seconds", str(seconds), "--out", str(self.config_path)]
-        if fps:
-            cmd += ["--fps", str(fps)]
-        if standards:
-            cmd += ["--standards", *standards]
+        cmd = [python, "-u", str(self.project_root / "tools" / tool), *[str(a) for a in args]]
         env = dict(os.environ)
         env["PYTHONPATH"] = os.pathsep.join([str(self.project_root), *perception_import_paths(),
                                              env.get("PYTHONPATH", "")])
@@ -68,27 +72,29 @@ class AutoCalibration:
         self._reader = threading.Thread(target=self._read, daemon=True)
         self._reader.start()
 
+    def succeeded(self) -> bool:
+        return True
+
     def _read(self):
+        tag = f"[{self.PREFIX}] "
         for raw in self._proc.stdout:
             line = raw.rstrip()
-            if line.startswith("[calib] "):
-                text = line[len("[calib] "):]
-                if text.startswith("perception "):
-                    self.progress = text
-                else:
+            if line.startswith(tag):
+                text = line[len(tag):]
+                if not text.startswith("perception "):
                     self.lines.append(text)
-                    self.progress = text
+                self.progress = text
             elif line:
                 self._tail = (self._tail + [line])[-5:]
         code = self._proc.wait()
         if self.state == self.CANCELLED:
             return
-        if code == 0 and self.config_path.exists():
+        if code == 0 and self.succeeded():
             self.state = self.DONE
         else:
             self.state = self.FAILED
             if code == 2:
-                self.progress = "no METRIC calibration (see conditions)"
+                self.progress = self.NOT_FOUND
             else:
                 self.progress = f"error (exit {code}): " + (self._tail[-1] if self._tail else "")
                 self.lines += self._tail
@@ -101,3 +107,35 @@ class AutoCalibration:
         if self._proc.poll() is None:
             self.state = self.CANCELLED
             self._proc.kill()
+
+
+class AutoCalibration(BackgroundTool):
+    PREFIX = "calib"
+    NOT_FOUND = "no METRIC calibration (see conditions)"
+
+    def __init__(self, project_root: Path, video: str, fps: Optional[float] = None, seconds: float = 20.0,
+                 standards: Sequence[str] = ()):
+        self.video = video
+        self.camera_id = camera_id_for(video)
+        self.config_path = Path(project_root) / "config" / f"auto_{video_key(video)}.yaml"
+        args = ["--video", video, "--camera-id", self.camera_id, "--seconds", seconds, "--out", self.config_path]
+        if fps:
+            args += ["--fps", fps]
+        if standards:
+            args += ["--standards", *standards]
+        super().__init__(project_root, "calibrate_video.py", args)
+
+    def succeeded(self) -> bool:
+        return self.config_path.exists()
+
+
+class LaneExtraction(BackgroundTool):
+    PREFIX = "lanes"
+    NOT_FOUND = "no lane markings found"
+
+    def __init__(self, project_root: Path, config_path: Path, video: Optional[str] = None, seconds: float = 20.0):
+        self.config_path = Path(config_path)
+        args = ["--config", self.config_path, "--seconds", seconds]
+        if video:
+            args += ["--video", video]
+        super().__init__(project_root, "extract_lanes.py", args)

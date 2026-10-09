@@ -46,6 +46,18 @@ conditions failed.
 A frame folder's frame rate is read from the file names when they carry the capture
 time (`<s>_<ns>_...`, TUMTraf); for video files from the container.
 
+## Automatic lane markings
+
+Every scenario gets the real lane markings in the scene, whatever its calibration came
+from. A config calibrated from lane markings carries them; for any other (calibrated by
+hand, borrowed, or after a failed automatic calibration) `tools/extract_lanes.py` runs
+in the background: marking pieces of the video's empty-road background (dashes too
+short to pass alone are kept when they line up towards the vanishing point), projected
+with the scenario's own homography so they lie where its vehicles are placed. When done
+they replace the straight lane lines in the running scene. They are cached per video and
+calibration in `data/cache/lanes/` (main.py uses the cache too), so the next start draws
+them right away.
+
 ## VLM Console
 
 A second window, **CCTV VLM Console**, controls the vision-language model (Ollama). It runs beside YOLO and never

@@ -104,6 +104,15 @@ def _create_lane_lines(stage, ground_size: float, lane_lines_x: Sequence[float])
         line_xform.AddScaleOp().Set(Gf.Vec3f(0.15, 2 * half, 0.01))
 
 
+def replace_lane_markings(stage, markings: Sequence[dict]):
+    """Swap the scene's lane lines / markings for `markings` (a running scene: the lane
+    markings extracted in the background arrive after the scene was built)."""
+    for path in ("/World/LaneLines", "/World/LaneMarkings"):
+        if stage.GetPrimAtPath(path):
+            stage.RemovePrim(path)
+    _create_lane_markings(stage, markings)
+
+
 def _create_lane_markings(stage, markings: Sequence[dict]):
     """Each marking piece as a thin flat box along its road segment, in its paint colour."""
     import math

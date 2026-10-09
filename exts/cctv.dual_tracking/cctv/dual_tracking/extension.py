@@ -59,6 +59,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self.session = None
         self.calibration = None
         self._calibration_applied = False
+        self.lanes_job = None
+        self._lanes_request = None
         self._last_preview = 0.0
         self._updates = 0
         self._autostart = settings.get(f"{SETTINGS}/autostart_config") or ""
@@ -94,6 +96,7 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         if self.calibration is not None:
             self.calibration.cancel()
             self.calibration = None
+        self._cancel_lanes()
         config_path = config_path if config_path.is_absolute() else self.project_root / config_path
         try:
             config = load_config(config_path, self.project_root, video_override)
@@ -101,6 +104,15 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             carb.log_error(f"[cctv.dual_tracking] cannot load {config_path}: {e}")
             return
         print(f"[CCTV] scenario {config_path.name}" + (f", video {video_override}" if video_override else ""))
+        calibrating = bool(calibrate and video_override)
+        need_lanes = not (config.get("simulation") or {}).get("lane_markings")
+        if need_lanes:
+            from world.context.lane_cache import load_cached
+            cached = load_cached(config, self.project_root)
+            if cached:
+                config.setdefault("simulation", {})["lane_markings"] = cached
+                need_lanes = False
+                print(f"[CCTV] lane markings: {len(cached)} pieces from the cache")
         self.config = config
         self.session = ReplaySession(config)
         self.session.on_frame = self._on_frame
@@ -111,12 +123,51 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self.vlm.apply_config(config.get("vlm") or {})
         if self.session.start() and start_time_s > 0:
             self.session.seek(start_time_s)
-        if calibrate and video_override:
+        if calibrating:
             print(f"[CCTV] calibrating {video_override} in the background")
             self.calibration = AutoCalibration(self.project_root, video_override,
                                                seconds=self.window.calibration_seconds,
                                                standards=self.window.standards)
             self._calibration_applied = False
+        self._lanes_request = (config_path, video_override) if need_lanes else None
+        if need_lanes and not calibrating:   # a calibration brings its own markings
+            self._start_lanes()
+
+    def _start_lanes(self):
+        """Extract the lane markings of the running scenario in the background (_poll_lanes)."""
+        from .calibration import LaneExtraction
+
+        if self._lanes_request is None or self.session is None or self.session.state == self.session.FAILED:
+            return
+        config_path, video = self._lanes_request
+        self._lanes_request = None
+        print(f"[CCTV] extracting lane markings of {video or config_path.name} in the background")
+        self.lanes_job = LaneExtraction(self.project_root, config_path, video,
+                                        seconds=self.window.calibration_seconds)
+
+    def _cancel_lanes(self):
+        if self.lanes_job is not None:
+            self.lanes_job.cancel()
+            self.lanes_job = None
+        self._lanes_request = None
+
+    def _poll_lanes(self):
+        job = self.lanes_job
+        if job is None:
+            return
+        self.window.show_lanes(job)
+        if job.state != job.DONE or self.session is None:
+            return
+        from world.context.lane_cache import load_cached
+
+        self.lanes_job = None
+        markings = load_cached(self.config, self.project_root)
+        if markings and self.session.set_lane_markings(markings):
+            print(f"[CCTV] lane markings: {len(markings)} pieces drawn")
+            job.progress = f"{len(markings)} pieces drawn"
+        else:
+            job.state, job.progress = job.FAILED, "extracted, but nothing in the cache for this scenario"
+        self.window.show_lanes(job)
 
     def toggle_pause(self):
         if self.session is not None:
@@ -135,6 +186,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         if calib is None:
             return
         self.window.show_calibration(calib)
+        if calib.state == calib.FAILED and self._lanes_request is not None:
+            self._start_lanes()        # stays on the borrowed calibration: draw its lanes
         if calib.state != calib.DONE or self._calibration_applied:
             return
         self._calibration_applied = True
@@ -173,6 +226,7 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
                 self.start(path)
         self.vlm.poll()
         self._poll_calibration()
+        self._poll_lanes()
         now = time.perf_counter()
         if now - self._last_console >= CONSOLE_INTERVAL_S:
             self._last_console = now
@@ -216,6 +270,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self.stop()
         if getattr(self, "calibration", None) is not None:
             self.calibration.cancel()
+        if getattr(self, "lanes_job", None) is not None:
+            self.lanes_job.cancel()
         self._update_sub = None
         if getattr(self, "vlm", None) is not None:
             self.vlm.shutdown()

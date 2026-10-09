@@ -275,7 +275,8 @@ class LaneMarkingSource(CalibrationSource):
                                     calibration_points=camera.calibration_points(), vanishing_point=vp,
                                     camera=camera, lane_lines_x=[round(float(x), 3) for x in metric["boundary_x"]],
                                     road_mask=road, notes={"road_standard": standard.name})
-        from world.context.lane_markings import markings_on_road
-        _, _, ll = lane_evidence(inputs)
-        hyp.notes["markings"] = markings_on_road(camera.image_to_ground(), ll, camera.horizon_y)
+        from world.context.lane_markings import scene_markings
+        background, _, ll = lane_evidence(inputs)
+        hyp.notes["markings"] = scene_markings(camera.image_to_ground(), background.image, ll, camera.horizon_y,
+                                               road, inputs.get("catalog"))
         return hyp, result

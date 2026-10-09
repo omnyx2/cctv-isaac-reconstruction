@@ -180,6 +180,17 @@ class ReplaySession:
         self.log(f"[CCTV] started {video['path']}: {size[0]}x{size[1]} @ {self.fps:.1f} FPS, "
                  f"{self.total_frames} frames")
 
+    def set_lane_markings(self, markings) -> bool:
+        """Draw lane markings into the running scene (replacing the straight lane lines)."""
+        if self._vehicles is None or not markings:
+            return False
+        import omni.usd
+        from simulation.scene_builder import replace_lane_markings
+
+        replace_lane_markings(omni.usd.get_context().get_stage(), markings)
+        self.config.setdefault("simulation", {})["lane_markings"] = markings
+        return True
+
     def toggle_pause(self):
         if self.state == self.RUNNING:
             self.state = self.PAUSED
