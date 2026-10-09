@@ -83,6 +83,11 @@ class ConfigPointsSource(CalibrationSource):
         at_least("n_points", 4, "a plane-to-plane homography has 8 degrees of freedom: 4 point pairs"),
         at_least("spread_area_px", 50.0, "nearly collinear points leave the homography undetermined",
                  name="points spread (not collinear)"),
+        predicate("not a rejected calibration",
+                  lambda e: (not str(e["provenance"]).startswith("auto-rejected") or e.get("inspect", False),
+                             f"source {e['provenance']}" + (" (inspection override: mapping.inspect)"
+                                                            if e.get("inspect", False) else "")),
+                  ("provenance",), "an automatic estimate that failed its own checks is wrong somewhere"),
     )
     postconditions = (
         predicate("points below the horizon", lambda e: (e["points_in_front"], f"{e['points_in_front']}"),
@@ -101,6 +106,7 @@ class ConfigPointsSource(CalibrationSource):
                      for j in range(i + 1, len(pix)) for k in range(j + 1, len(pix))]
             e.add("spread_area_px", float(max(areas)), "px^2", "config")
         e.add("provenance", mapping.get("source", "manual"), "", "config mapping.source")
+        e.add("inspect", bool(mapping.get("inspect", False)), "", "config mapping.inspect")
         return e
 
     def estimate(self, evidence, inputs):

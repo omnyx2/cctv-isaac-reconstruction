@@ -1,0 +1,50 @@
+# REJECTED by its conditions - written only to look at what the wrong calibration does; the world model never uses it
+# Automatic calibration (lane_markings, METRIC) by tools/auto_calibrate.py
+# road standard DE_autobahn, focal 1372 px, height 13.44 m, pitch 24.75 deg
+# conditions:
+#   [ok] lane_inliers >= 10: lane_inliers = 55
+#   [ok] lane_boundaries >= 3: lane_boundaries = 14
+#   [ok] dash_periods >= 4: dash_periods = 17
+#   [ok] 3 <= hfov_deg <= 120: hfov_deg = 69.96
+#   [ok] 3 <= height_m <= 50: height_m = 13.44
+#   [NO] lane_width_cv <= 0.2: lane_width_cv = nan
+#   [ok] standard_support >= 0.5: standard_support = 0.6923
+#   [ok] standard_margin >= 0.25: standard_margin = 0.6923
+#   [NO] car box widths plausible: median car box width 4.08 m (400 boxes)
+
+video: {path: 'D:/datasets/TUMTraf-Accid3nD/data/r09_s04/images/s040_camera_basler_north_16mm',
+  fps: 25.0}
+yolo:
+  model_path: yolov8n.pt
+  confidence: 0.25
+  classes: [0, 2, 5, 7]
+  tracker_config: bytetrack.yaml
+simulation:
+  vehicle_dynamics: true
+  ground_size: 400.0
+  camera:
+    position: [0.0, 0.0, 13.437]
+    pitch_deg: 24.754
+    yaw_deg: -19.071
+    focal_px: 1372.0
+    image_size: [1920, 1200]
+  lane_lines_x: [-15.645, -13.741, -7.673, -1.537, 5.055, 11.283, 18.451, 19.683,
+    28.313, 29.727, 33.477, 39.506, 46.038, 52.664]
+mapping:
+  source: auto-rejected:lane_markings
+  calibration_points:
+  - - [576.0, 1104.0]
+    - [-0.323, 14.366]
+  - - [1344.0, 1104.0]
+    - [9.127, 11.1]
+  - - [672.0, 780.0]
+    - [2.008, 21.858]
+  - - [1248.0, 780.0]
+    - [11.92, 18.431]
+  inspect: true
+context:
+  allowed_standards: [DE_autobahn]
+stabilization: {enabled: true}
+display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
+vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'qwen2.5vl:7b',
+  interval_s: 4.0, max_side: 1344, timeout_s: 60.0}

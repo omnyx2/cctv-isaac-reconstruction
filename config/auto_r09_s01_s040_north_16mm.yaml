@@ -1,15 +1,15 @@
 # Automatic calibration (lane_markings, METRIC) by tools/auto_calibrate.py
 # road standard DE_autobahn, focal 2513 px, height 8.28 m, pitch 14.08 deg
-# conditions passed:
-#   lane_inliers >= 10: lane_inliers = 65
-#   lane_boundaries >= 3: lane_boundaries = 15
-#   dash_periods >= 4: dash_periods = 25
-#   3 <= hfov_deg <= 120: hfov_deg = 41.81
-#   3 <= height_m <= 50: height_m = 8.281
-#   lane_width_cv <= 0.2: lane_width_cv = 0.09147
-#   standard_support >= 0.5: standard_support = 0.5652
-#   standard_margin >= 0.25: standard_margin = 0.5652
-#   car box widths plausible: median car box width 2.45 m (400 boxes)
+# conditions:
+#   [ok] lane_inliers >= 10: lane_inliers = 65
+#   [ok] lane_boundaries >= 3: lane_boundaries = 15
+#   [ok] dash_periods >= 4: dash_periods = 25
+#   [ok] 3 <= hfov_deg <= 120: hfov_deg = 41.81
+#   [ok] 3 <= height_m <= 50: height_m = 8.281
+#   [ok] lane_width_cv <= 0.2: lane_width_cv = 0.09147
+#   [ok] standard_support >= 0.5: standard_support = 0.5652
+#   [ok] standard_margin >= 0.25: standard_margin = 0.5652
+#   [ok] car box widths plausible: median car box width 2.45 m (400 boxes)
 
 video: {path: 'D:/datasets/TUMTraf-Accid3nD/data/r09_s01/images/s040_camera_basler_north_16mm',
   fps: 25.0}

@@ -113,7 +113,7 @@ def detrac_case(seq: str):
 
 # ------------------------------------------------------------------ one camera
 
-def write_config(name: str, chosen, video, catalog_standards) -> Path:
+def write_config(name: str, chosen, video, catalog_standards, rejected: bool = False) -> Path:
     """A runnable scenario config from an admitted METRIC hypothesis, at the video's resolution,
     with its provenance (mapping.source) and the conditions it passed."""
     path, fps, full_size = video
@@ -133,14 +133,20 @@ def write_config(name: str, chosen, video, catalog_standards) -> Path:
     header = [f"# Automatic calibration ({chosen.source}, {chosen.level.name}) by tools/auto_calibrate.py",
               f"# road standard {chosen.evidence.get('road_standard')}, focal {camera.focal_px:.0f} px, "
               f"height {camera.height_m:.2f} m, pitch {np.degrees(camera.pitch_rad):.2f} deg",
-              "# conditions passed:"] + [f"#   {r.name}: {r.detail}" for r in chosen.judgement.results]
-    out = PROJECT_ROOT / "config" / f"auto_{name}.yaml"
+              "# conditions:"] + [f"#   [{'ok' if r.holds else 'NO'}] {r.name}: {r.detail}"
+                                  for r in chosen.judgement.results]
+    if rejected:
+        header.insert(0, "# REJECTED by its conditions - written only to look at what the wrong calibration does;"
+                         " the world model never uses it")
+        config["mapping"]["source"] = f"auto-rejected:{chosen.source}"
+        config["mapping"]["inspect"] = True     # lets the world model load it, visibly (selection report)
+    out = PROJECT_ROOT / "config" / f"auto_{'rejected_' if rejected else ''}{name}.yaml"
     out.write_text("\n".join(header) + "\n\n" + yaml.safe_dump(config, sort_keys=False, default_flow_style=None),
                    encoding="utf-8")
     return out
 
 
-def evaluate(name, cache, size, samples, gt, gt_cam, video=None, catalog=None, write=False):
+def evaluate(name, cache, size, samples, gt, gt_cam, video=None, catalog=None, write=False, write_rejected=False):
     inputs = {"image_size": size, "frames": cache["frames"], "transforms": cache["transforms"],
               "samples": samples, "catalog": catalog or MarkingCatalog()}
     selection = select([LaneMarkingSource(), LaneVanishingSource(), TrafficFlowSource()], inputs,
@@ -189,6 +195,10 @@ def evaluate(name, cache, size, samples, gt, gt_cam, video=None, catalog=None, w
     if write and chosen.level == GeometryLevel.METRIC and video is not None:
         row["config"] = str(write_config(name, chosen, video, inputs["catalog"].standards))
         print(f"  wrote {row['config']}")
+    lane = next(d for d in selection.decisions if d.source == "lane_markings")
+    if write_rejected and lane.hypothesis is not None and video is not None:
+        row["rejected_config"] = str(write_config(name, lane.hypothesis, video, inputs["catalog"].standards, rejected=True))
+        print(f"  wrote {row['rejected_config']} (rejected)")
     return row
 
 
@@ -198,6 +208,8 @@ def main():
     parser.add_argument("--all-tum", action="store_true", help="every cached TUM camera")
     parser.add_argument("--detrac", nargs="*", default=[], help="UA-DETRAC sequences (MVI_xxxxx)")
     parser.add_argument("--standards", nargs="*", default=None, help="restrict the road standards (e.g. DE_autobahn)")
+    parser.add_argument("--write-rejected", action="store_true",
+                        help="also write config/auto_rejected_<name>.yaml for metric estimates rejected by their checks")
     parser.add_argument("--write-config", action="store_true",
                         help="write config/auto_<name>.yaml for every camera calibrated METRIC")
     args = parser.parse_args()
@@ -215,11 +227,13 @@ def main():
         catalog.standards = {k: v for k, v in catalog.standards.items() if k in args.standards}
     for seq, cam in cases:
         try:
-            rows.append(evaluate(*tum_case(seq, cam), catalog=catalog, write=args.write_config))
+            rows.append(evaluate(*tum_case(seq, cam), catalog=catalog, write=args.write_config,
+                                   write_rejected=args.write_rejected))
         except Exception as e:
             print(f"{seq} {cam}: skipped ({type(e).__name__}: {e})", flush=True)
     for seq in args.detrac:
-        rows.append(evaluate(*detrac_case(seq), catalog=catalog, write=args.write_config))
+        rows.append(evaluate(*detrac_case(seq), catalog=catalog, write=args.write_config,
+                                   write_rejected=args.write_rejected))
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "results.json").write_text(json.dumps(rows, indent=1, default=str))
 

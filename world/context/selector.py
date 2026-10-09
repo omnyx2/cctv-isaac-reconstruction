@@ -78,6 +78,8 @@ class Decision:
     stage: str                   # "preconditions", "estimate", "postconditions", "admitted"
     judgement: Judgement
     error: str = ""
+    hypothesis: Optional[CalibrationHypothesis] = None   # kept when rejected by its postconditions
+                                                         # (for inspection only; never used)
 
 
 @dataclass
@@ -140,7 +142,8 @@ def select(sources: Sequence[CalibrationSource], inputs: dict,
         post = judge(source.postconditions, evidence)
         full = Judgement(pre.results + post.results)
         if not post.holds:
-            decisions.append(Decision(source.name, source.level, "postconditions", full))
+            hypothesis.evidence, hypothesis.judgement = evidence, full
+            decisions.append(Decision(source.name, source.level, "postconditions", full, hypothesis=hypothesis))
             continue
         hypothesis.evidence, hypothesis.judgement = evidence, full
         decisions.append(Decision(source.name, source.level, "admitted", full))
