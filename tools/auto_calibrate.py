@@ -38,6 +38,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from world.context import GeometryLevel, MarkingCatalog, select  # noqa: E402
 from world.context import lane_markings as rg  # noqa: E402
 from world.context.lane_metric import LaneMarkingSource  # noqa: E402
+from world.context.store import StoredCameraSource, save_calibration  # noqa: E402
+STORE = PROJECT_ROOT / "data" / "calibrations"
 from world.context.sources import LaneVanishingSource, TrafficFlowSource, lane_evidence, track_vanishing_point  # noqa: E402
 
 CACHE = PROJECT_ROOT / "data" / "cache"
@@ -56,11 +58,40 @@ def boxes_of(detections):
 
 # ------------------------------------------------------------------ inputs per dataset
 
-def tum_case(seq: str, cam: str):
+DETECTOR = ("yolo11s.pt", 1280)     # model and input size for --native-detections (TECHNICAL_NOTES 19.6)
+
+
+def native_detections(seq: str, cam: str, frames, work_size, detector=DETECTOR) -> dict:
+    """Vehicle tracks from the full-resolution frames with YOLO at the native input size
+    (far vehicles of the 16 mm views are lost at the default 640: TECHNICAL_NOTES 19.5),
+    cached, returned in `work_size` pixel coordinates. TUM gantry cameras are fixed: no
+    camera-motion transforms. Needs CUDA torch (run with C:\\isaacsim\\python.bat)."""
+    model, imgsz = detector
+    path = CACHE / f"tum_{seq}_{cam}_native_{Path(model).stem}_{imgsz}.pkl"
+    if not path.exists():
+        from perception.yolo_tracker import YOLOTracker
+        yolo = yaml.safe_load(open(PROJECT_ROOT / "config" / "TEMPLATE.yaml", encoding="utf-8"))["yolo"]
+        tracker = YOLOTracker(**{**yolo, "model_path": str(PROJECT_ROOT / model), "imgsz": imgsz})
+        if not tracker.load_model():
+            raise RuntimeError("YOLO not available")
+        dets = []
+        for i, f in enumerate(frames):
+            result = tracker.track(cv2.imread(str(f.image)), frame_id=i + 1)
+            dets.append([(v.track_id, v.bbox, v.class_name) for v in result.vehicles])
+        path.write_bytes(pickle.dumps({"size": (1920, 1200), "model": model, "imgsz": imgsz, "frames": dets}))
+    native = pickle.loads(path.read_bytes())
+    k = work_size[0] / native["size"][0]
+    return {"frames": [[(t, tuple(v * k for v in b), n) for t, b, n in d] for d in native["frames"]],
+            "transforms": [None] * len(native["frames"]), "size": tuple(work_size), "scale": k, "fps": 25.0}
+
+
+def tum_case(seq: str, cam: str, native: bool = False):
     from analysis import tum_accid3nd as tum
 
     cache = pickle.loads((CACHE / f"tum_{seq}_{cam}.pkl").read_bytes())
     frames = tum.load_camera(TUM_ROOT, seq, cam)
+    if native:
+        cache = native_detections(seq, cam, frames, tuple(cache["size"]))
     scale = cache["scale"]
     size = tuple(cache["size"])
 
@@ -122,9 +153,10 @@ def write_config(name: str, chosen, video, catalog_standards, rejected: bool = F
     template = yaml.safe_load(open(PROJECT_ROOT / "config" / "TEMPLATE.yaml", encoding="utf-8"))
     config = {
         "video": {"path": Path(path).as_posix(), "fps": fps},
-        "yolo": {**template["yolo"], "imgsz": int(full_size[0])},     # native width (far vehicles)
+        "yolo": {**template["yolo"], "model_path": "yolo11s.pt", "imgsz": 1280},   # TECHNICAL_NOTES 19.6
         "simulation": {"vehicle_dynamics": True, "ground_size": 400.0, "camera": camera.simulation_camera(),
-                       "lane_lines_x": chosen.lane_lines_x},
+                       "lane_lines_x": chosen.lane_lines_x,
+                       "lane_markings": chosen.notes.get("markings", [])},
         "mapping": {"source": f"auto:{chosen.source}", "calibration_points": camera.calibration_points()},
         "context": {"allowed_standards": list(catalog_standards)},
         "stabilization": {"enabled": "TUMTraf" not in Path(path).as_posix()},   # TUM: fixed gantry cameras
@@ -147,11 +179,14 @@ def write_config(name: str, chosen, video, catalog_standards, rejected: bool = F
     return out
 
 
-def evaluate(name, cache, size, samples, gt, gt_cam, video=None, catalog=None, write=False, write_rejected=False):
+def evaluate(name, cache, size, samples, gt, gt_cam, video=None, catalog=None, write=False, write_rejected=False,
+             camera_id=None, origin=None, use_store=False, store=False):
     inputs = {"image_size": size, "frames": cache["frames"], "transforms": cache["transforms"],
               "samples": samples, "catalog": catalog or MarkingCatalog()}
-    selection = select([LaneMarkingSource(), LaneVanishingSource(), TrafficFlowSource()], inputs,
-                       required=GeometryLevel.METRIC)
+    sources = [LaneMarkingSource(), LaneVanishingSource(), TrafficFlowSource()]
+    if use_store and camera_id:
+        sources.insert(0, StoredCameraSource(STORE, camera_id, exclude_origin=origin))
+    selection = select(sources, inputs, required=GeometryLevel.METRIC)
     background, road, lanes = lane_evidence(inputs)
     tvp = track_vanishing_point(inputs)
     track_vp = None if tvp is None else tvp[0]
@@ -180,11 +215,13 @@ def evaluate(name, cache, size, samples, gt, gt_cam, video=None, catalog=None, w
         if key in est:
             row[key] = est[key]
     # stage 2 vs ground truth (whether admitted or not, if it got as far as an estimate)
-    lane_decision = next(d for d in selection.decisions if d.source == "lane_markings")
-    stage2 = {r.name: r.detail for r in lane_decision.judgement.results}
+    if store and camera_id and chosen.source == "lane_markings":
+        tvp_store = track_vanishing_point(inputs)
+        row["stored"] = str(save_calibration(STORE, camera_id, origin, chosen,
+                                             None if tvp_store is None else tvp_store[0]))
     print(f"\n=== {name}: {chosen.source} ({chosen.level.name}) | VP err lanes {row['err_lane_px']} tracks {row['err_track_px']} px")
     print(selection.report())
-    if chosen.source == "lane_markings" and gt_cam:
+    if chosen.level == GeometryLevel.METRIC and chosen.camera is not None and gt_cam:
         cam = chosen.camera
         row["err_focal_pct"] = round(100 * (cam.focal_px / gt_cam["focal_px"] - 1), 1)
         row["err_height_pct"] = round(100 * (cam.height_m / gt_cam["height_m"] - 1), 1)
@@ -196,8 +233,8 @@ def evaluate(name, cache, size, samples, gt, gt_cam, video=None, catalog=None, w
     if write and chosen.level == GeometryLevel.METRIC and video is not None:
         row["config"] = str(write_config(name, chosen, video, inputs["catalog"].standards))
         print(f"  wrote {row['config']}")
-    lane = next(d for d in selection.decisions if d.source == "lane_markings")
-    if write_rejected and lane.hypothesis is not None and video is not None:
+    lane = next((d for d in selection.decisions if d.source == "lane_markings"), None)
+    if write_rejected and lane is not None and lane.hypothesis is not None and video is not None:
         row["rejected_config"] = str(write_config(name, lane.hypothesis, video, inputs["catalog"].standards, rejected=True))
         print(f"  wrote {row['rejected_config']} (rejected)")
     return row
@@ -209,6 +246,13 @@ def main():
     parser.add_argument("--all-tum", action="store_true", help="every cached TUM camera")
     parser.add_argument("--detrac", nargs="*", default=[], help="UA-DETRAC sequences (MVI_xxxxx)")
     parser.add_argument("--standards", nargs="*", default=None, help="restrict the road standards (e.g. DE_autobahn)")
+    parser.add_argument("--store", action="store_true",
+                        help="save admitted lane-marking calibrations per camera (data/calibrations/<camera>/<sequence>.json)")
+    parser.add_argument("--use-store", action="store_true",
+                        help="try the stored calibration of the same camera first (other sequences only)")
+    parser.add_argument("--native-detections", action="store_true",
+                        help="TUM: vehicle tracks from full-resolution frames with YOLO input 1920 (cached)")
+    parser.add_argument("--out", default="results.json", help="result file name in data/results/auto_calib/")
     parser.add_argument("--write-rejected", action="store_true",
                         help="also write config/auto_rejected_<name>.yaml for metric estimates rejected by their checks")
     parser.add_argument("--write-config", action="store_true",
@@ -218,8 +262,8 @@ def main():
     cases = [c.split(":") for c in args.tum]
     if args.all_tum:
         for p in sorted(CACHE.glob("tum_r09_s*_s0*_camera_*.pkl")):
-            if "_w" in p.stem.split("mm")[-1]:
-                continue   # other work widths
+            if p.stem.split("mm")[-1]:
+                continue   # other work widths / native caches
             seq = "_".join(p.stem.split("_")[1:3])
             cases.append([seq, p.stem[len(f"tum_{seq}_"):]])
     rows = []
@@ -228,7 +272,9 @@ def main():
         catalog.standards = {k: v for k, v in catalog.standards.items() if k in args.standards}
     for seq, cam in cases:
         try:
-            rows.append(evaluate(*tum_case(seq, cam), catalog=catalog, write=args.write_config,
+            rows.append(evaluate(*tum_case(seq, cam, native=args.native_detections), catalog=catalog,
+                                 camera_id=cam, origin=seq, use_store=args.use_store, store=args.store,
+                                 write=args.write_config,
                                    write_rejected=args.write_rejected))
         except Exception as e:
             print(f"{seq} {cam}: skipped ({type(e).__name__}: {e})", flush=True)
@@ -236,7 +282,7 @@ def main():
         rows.append(evaluate(*detrac_case(seq), catalog=catalog, write=args.write_config,
                                    write_rejected=args.write_rejected))
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "results.json").write_text(json.dumps(rows, indent=1, default=str))
+    (OUT / args.out).write_text(json.dumps(rows, indent=1, default=str))
 
     def summary(key):
         e = [r[key] for r in rows if r[key] is not None]
@@ -244,7 +290,7 @@ def main():
     print(f"\nvanishing point error vs ground truth: lanes {summary('err_lane_px')} | tracks {summary('err_track_px')}")
     metric = [r for r in rows if "err_focal_pct" in r]
     if metric:
-        print(f"metric (admitted lane_markings, {len(metric)} cams): focal error % {[r['err_focal_pct'] for r in metric]}, "
+        print(f"metric (admitted METRIC, {len(metric)} cams): focal error % {[r['err_focal_pct'] for r in metric]}, "
               f"height error % {[r['err_height_pct'] for r in metric]}, pitch error deg {[r['err_pitch_deg'] for r in metric]}")
 
 

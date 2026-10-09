@@ -31,7 +31,8 @@ class SceneManager:
         ground_size: float = 100.0,
         camera_height: float = 10.0,
         camera: Optional[dict] = None,
-        lane_lines_x: Optional[list] = None
+        lane_lines_x: Optional[list] = None,
+        lane_markings: Optional[list] = None
     ):
         self.headless = headless
         self.width = width
@@ -41,6 +42,7 @@ class SceneManager:
         # Calibrated CCTV pose (see tools/calibrate_camera.py); None = straight down
         self.camera_config = camera
         self.lane_lines_x = lane_lines_x or []
+        self.lane_markings = lane_markings or []
 
         self._simulation_app: Optional['SimulationApp'] = None
         self._stage = None
@@ -81,7 +83,7 @@ class SceneManager:
 
             # Ground, calibrated CCTV camera, lights, lane lines (shared with the extension)
             camera_path = build_scene(self._stage, self.ground_size, self.camera_height,
-                                      self.camera_config, self.lane_lines_x)
+                                      self.camera_config, self.lane_lines_x, self.lane_markings)
             self._camera_prim = self._stage.GetPrimAtPath(camera_path)
 
             # Show the CCTV camera in the viewport and capture it for the OpenCV window

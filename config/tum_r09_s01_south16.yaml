@@ -10,11 +10,11 @@
 video: {path: 'D:/datasets/TUMTraf-Accid3nD/accident_scenes/r09_s01_south16/images',
   fps: 25}
 yolo:
-  model_path: yolov8n.pt
+  model_path: yolo11s.pt      # TUM labels: recall 0.95, IoU 0.88-0.92, 11 ms at 1280 (yolov8n: 0.45-0.59 at 640)
   confidence: 0.25
   classes: [0, 2, 5, 7]
   tracker_config: bytetrack.yaml
-  imgsz: 1920                  # native width: recall 0.38 -> 0.83 vs the default 640 (16 mm view), ~50 fps
+  imgsz: 1280
 simulation:
   vehicle_dynamics: true
   ground_size: 400.0

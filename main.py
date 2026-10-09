@@ -41,7 +41,7 @@ from world.world_tracker import Detection
 
 REAL_WINDOW = "Real World (CCTV + YOLO)"
 SIM_WINDOW = "Simulation (Isaac Sim)"
-SCENE_KEYS = ("headless", "ground_size", "camera_height", "camera", "lane_lines_x")
+SCENE_KEYS = ("headless", "ground_size", "camera_height", "camera", "lane_lines_x", "lane_markings")
 
 
 class CCTVDualTracker:

@@ -58,6 +58,7 @@ class LaneLines:
     vanishing_point: Optional[Tuple[float, float]] = None
     inliers: np.ndarray = field(default_factory=lambda: np.zeros(0, bool))
     residual_px: float = float("nan")        # median inlier line distance to the vanishing point
+    paints: List[str] = field(default_factory=list)   # paint of each segment (catalog name)
 
 
 # ------------------------------------------------------------------ background
@@ -265,12 +266,50 @@ def segment_vanishing_point(segments: np.ndarray, seed: int = 0,
     return (float(vp[0]), float(vp[1])), inliers, float(np.median(np.abs(normal[inliers] @ vp - offset[inliers])))
 
 
+def segment_paints(segments: np.ndarray, masks: Dict[str, np.ndarray], samples: int = 9) -> List[str]:
+    """The paint each segment is painted in: the paint mask hit most along it."""
+    names = list(masks)
+    out = []
+    for x1, y1, x2, y2 in segments:
+        t = np.linspace(0.1, 0.9, samples)
+        xs = np.clip(np.round(x1 + t * (x2 - x1)).astype(int), 0, next(iter(masks.values())).shape[1] - 1)
+        ys = np.clip(np.round(y1 + t * (y2 - y1)).astype(int), 0, next(iter(masks.values())).shape[0] - 1)
+        hits = [int(masks[n][ys, xs].sum()) for n in names]
+        out.append(names[int(np.argmax(hits))] if hits and max(hits) else (names[0] if names else "white"))
+    return out
+
+
 def lane_lines(background: np.ndarray, prior: Optional[Tuple[float, float]] = None,
                road: Optional[np.ndarray] = None, catalog: Optional[MarkingCatalog] = None) -> LaneLines:
-    mask, segments = segments_from_mask(marking_mask(background, road, catalog), background)
+    masks = paint_masks(background, road, catalog)
+    union = np.zeros(background.shape[:2], bool)
+    for m in masks.values():
+        union |= m
+    mask, segments = segments_from_mask(union.astype(np.uint8) * 255, background)
     vp, inliers, residual = segment_vanishing_point(segments, prior=prior,
                                                     prior_radius=PRIOR_RADIUS * background.shape[1])
-    return LaneLines(mask, segments, vp, inliers, residual)
+    return LaneLines(mask, segments, vp, inliers, residual, segment_paints(segments, masks))
+
+
+def markings_on_road(image_to_road: np.ndarray, lanes: LaneLines, horizon_y: float,
+                     max_range_m: float = 200.0) -> List[dict]:
+    """Every detected marking piece (a dash, a piece of solid line, curved ones included:
+    they need not meet the vanishing point) as a road segment in meters with its paint:
+    the actual marking layout for the simulation scene. Pieces near the horizon (far,
+    imprecise) are dropped."""
+    out = []
+    for (x1, y1, x2, y2), paint in zip(lanes.segments, lanes.paints or ["white"] * len(lanes.segments)):
+        if min(y1, y2) <= horizon_y + 8:
+            continue
+        pts = np.array([[x1, y1, 1.0], [x2, y2, 1.0]]) @ image_to_road.T
+        if np.any(pts[:, 2] <= 0):
+            continue
+        g = pts[:, :2] / pts[:, 2:3]
+        if np.max(np.abs(g)) > max_range_m:
+            continue
+        out.append({"p": [[round(float(g[0, 0]), 3), round(float(g[0, 1]), 3)],
+                          [round(float(g[1, 0]), 3), round(float(g[1, 1]), 3)]], "paint": paint})
+    return out
 
 
 def draw_debug(background: np.ndarray, lanes: LaneLines, points: dict) -> np.ndarray:

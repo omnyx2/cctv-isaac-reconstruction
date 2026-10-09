@@ -163,7 +163,8 @@ class ReplaySession:
         UsdGeom.SetStageMetersPerUnit(stage, 1.0)
         simulation = self.config.get("simulation", {})
         camera_path = build_scene(stage, simulation.get("ground_size", 100.0), simulation.get("camera_height", 10.0),
-                                  simulation.get("camera"), simulation.get("lane_lines_x"))
+                                  simulation.get("camera"), simulation.get("lane_lines_x"),
+                                  simulation.get("lane_markings"))
         show_camera_in_viewport(camera_path)
         self._vehicles = VehicleController(stage=stage)
 

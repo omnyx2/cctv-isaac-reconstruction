@@ -11,13 +11,25 @@ from typing import Optional, Sequence
 CAMERA_PATH = "/World/CCTVCamera"
 
 
+PAINT_COLORS = {"white": (0.9, 0.9, 0.9), "yellow": (0.95, 0.75, 0.1), "blue": (0.15, 0.35, 0.9)}
+MARKING_WIDTH_M = 0.15
+
+
 def build_scene(stage, ground_size: float = 100.0, camera_height: float = 10.0,
-                camera: Optional[dict] = None, lane_lines_x: Optional[Sequence[float]] = None) -> str:
-    """Author the scene on `stage`; returns the CCTV camera prim path."""
+                camera: Optional[dict] = None, lane_lines_x: Optional[Sequence[float]] = None,
+                lane_markings: Optional[Sequence[dict]] = None) -> str:
+    """Author the scene on `stage`; returns the CCTV camera prim path.
+
+    lane_markings: the detected marking pieces in road meters, [{"p": [[x1, y1], [x2, y2]],
+    "paint": "white"}, ...] (automatic calibration): drawn as they are (dashes, curves,
+    exit lanes). Without them the straight `lane_lines_x` are drawn."""
     _create_ground(stage, ground_size)
     _create_camera(stage, camera, camera_height)
     _create_lighting(stage)
-    _create_lane_lines(stage, ground_size, lane_lines_x or [])
+    if lane_markings:
+        _create_lane_markings(stage, lane_markings)
+    else:
+        _create_lane_lines(stage, ground_size, lane_lines_x or [])
     return CAMERA_PATH
 
 
@@ -90,6 +102,25 @@ def _create_lane_lines(stage, ground_size: float, lane_lines_x: Sequence[float])
         line_xform = UsdGeom.Xformable(line)
         line_xform.AddTranslateOp().Set(Gf.Vec3d(x, half / 2, 0.01))
         line_xform.AddScaleOp().Set(Gf.Vec3f(0.15, 2 * half, 0.01))
+
+
+def _create_lane_markings(stage, markings: Sequence[dict]):
+    """Each marking piece as a thin flat box along its road segment, in its paint colour."""
+    import math
+    from pxr import Gf, UsdGeom
+
+    for i, m in enumerate(markings):
+        (x1, y1), (x2, y2) = m["p"]
+        length = math.hypot(x2 - x1, y2 - y1)
+        if length < 0.05:
+            continue
+        piece = UsdGeom.Cube.Define(stage, f"/World/LaneMarkings/Mark_{i}")
+        piece.CreateSizeAttr(1.0)
+        piece.CreateDisplayColorAttr([Gf.Vec3f(*PAINT_COLORS.get(m.get("paint", "white"), PAINT_COLORS["white"]))])
+        xform = UsdGeom.Xformable(piece)
+        xform.AddTranslateOp().Set(Gf.Vec3d((x1 + x2) / 2, (y1 + y2) / 2, 0.01))
+        xform.AddRotateZOp().Set(math.degrees(math.atan2(y2 - y1, x2 - x1)))
+        xform.AddScaleOp().Set(Gf.Vec3f(length, MARKING_WIDTH_M, 0.01))
 
 
 def show_camera_in_viewport(camera_path: str = CAMERA_PATH) -> bool:
