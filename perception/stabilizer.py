@@ -17,16 +17,22 @@ class CameraStabilizer:
     """Estimates current-frame -> reference-frame image transforms."""
 
     def __init__(self, max_features: int = 1500, scale: float = 0.5,
-                 min_inliers: int = 30, ransac_threshold: float = 2.0):
+                 min_inliers: int = 30, ransac_threshold: float = 2.0, work_width: int = 480):
         """
         Args:
             max_features: ORB features per frame
-            scale: Image downscale for feature matching (speed)
+            scale: Image downscale for feature matching (speed), at most; frames are
+                matched at no more than `work_width` pixels wide (ORB on a 1920 px frame
+                halved still took 45 ms, more than a 25 fps frame budget)
             min_inliers: Below this the previous transform is kept
             ransac_threshold: RANSAC reprojection threshold in full-res pixels
+            work_width: Width (px) the frames are matched at, at most
         """
+        self.max_scale = scale
         self.scale = scale
+        self.work_width = work_width
         self.min_inliers = min_inliers
+        self.ransac_threshold_full = ransac_threshold
         self.ransac_threshold = ransac_threshold * scale
         self._orb = cv2.ORB_create(nfeatures=max_features)
         self._matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
@@ -45,6 +51,8 @@ class CameraStabilizer:
 
     def set_reference(self, frame: np.ndarray, exclude_boxes: Optional[List[Tuple]] = None):
         """Use this frame as the calibrated reference view."""
+        self.scale = min(self.max_scale, self.work_width / frame.shape[1])
+        self.ransac_threshold = self.ransac_threshold_full * self.scale
         self._ref_keypoints, self._ref_descriptors = self._features(frame, exclude_boxes)
         self._last = np.eye(3)
 

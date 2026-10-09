@@ -126,7 +126,7 @@ def write_config(name: str, chosen, video, catalog_standards, rejected: bool = F
                        "lane_lines_x": chosen.lane_lines_x},
         "mapping": {"source": f"auto:{chosen.source}", "calibration_points": camera.calibration_points()},
         "context": {"allowed_standards": list(catalog_standards)},
-        "stabilization": {"enabled": True},
+        "stabilization": {"enabled": "TUMTraf" not in Path(path).as_posix()},   # TUM: fixed gantry cameras
         "display": template["display"],
         "vlm": template.get("vlm", {}),
     }
