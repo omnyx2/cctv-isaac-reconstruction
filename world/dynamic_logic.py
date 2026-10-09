@@ -1,5 +1,21 @@
 """Dynamic logic: turns noisy per-frame detections into continuous vehicle motion.
 
+Every road user is a hybrid system (world/hybrid.py), two automata in parallel:
+
+  motion       UNKNOWN --> MOVING <--> STOPPED     (windowed net displacement, hysteresis)
+               MOVING:  p' = v, v' = w             constant velocity + white acceleration (Kalman)
+               STOPPED: p' = 0, anchor' = k (p - anchor)
+               all:     heading' = clip(g (target - heading), +-yaw_rate)
+                        target = velocity direction (MOVING) or local traffic flow
+  observation  OBSERVED <--> COASTING --> LOST     (detections, coast_time)
+               COASTING: the motion flow continues without measurements, & p in road domain
+               a new track ID continuing a COASTING track takes over its state (handoff)
+
+The road domain and the metric come from the calibration context
+(world/context): measurements arrive in road meters with their covariance from the
+image -> road Jacobian, i.e. the non-Euclidean pixel metric pulled back to the road.
+`describe()` prints the automata.
+
 Pipeline per vehicle:
   - Kalman filter (constant velocity) with perspective-aware measurement noise
   - heading as its own state: follows velocity only when motion is statistically
@@ -12,8 +28,15 @@ Pipeline per vehicle:
 
 import numpy as np
 from collections import deque
-from typing import Dict, Optional, Set, Tuple
+from typing import Callable, Dict, Optional, Set, Tuple
 from dataclasses import dataclass
+
+from world.hybrid import Flow, HybridAutomaton, Transition
+
+# Motion modes
+UNKNOWN, MOVING, STOPPED = "unknown", "moving", "stopped"
+# Observation modes
+OBSERVED, COASTING, LOST = "observed", "coasting", "lost"
 
 
 def wrap_angle(angle: float) -> float:
@@ -197,7 +220,7 @@ class MotionProfile:
 
 
 class _Track:
-    """Per-object filter plus heading, motion mode and continuity bookkeeping."""
+    """Per-object filter plus heading, automaton modes and continuity bookkeeping."""
 
     def __init__(self, kf: KalmanFilter2D, heading: float, window: int,
                  agent: str, profile: MotionProfile):
@@ -210,9 +233,92 @@ class _Track:
         # Motion mode from net displacement over a window, not instantaneous velocity:
         # occlusion makes a parked car's bbox creep, which a Kalman filter reads as motion
         self.history = deque(maxlen=window + 1)
-        self.moving: Optional[bool] = None  # None until a full window has been observed
+        self.mode = UNKNOWN                 # motion automaton: until a full window has been observed
+        self.observation = OBSERVED         # observation automaton
         self.anchor = kf.state[:2].copy()   # Smoothed position while stationary
         self.offset = np.zeros(2)           # Decaying display offset across mode switches
+
+    @property
+    def moving(self) -> Optional[bool]:
+        """None (UNKNOWN), True (MOVING), False (STOPPED)."""
+        return None if self.mode == UNKNOWN else self.mode == MOVING
+
+
+@dataclass
+class _MotionInput:
+    """What the motion automaton's guards and resets see in one frame."""
+    track: "_Track"
+    position: np.ndarray
+    window_full: bool
+    window_speed: float
+    starts: bool                 # window speed above the moving threshold and velocity significant
+    min_speed: float
+
+
+def motion_automaton() -> HybridAutomaton:
+    """UNKNOWN -> MOVING <-> STOPPED with hysteresis (moving above min_moving_speed,
+    stopped below half of it) on the net displacement over motion_window."""
+
+    def stop_reset_from_unknown(c: _MotionInput):
+        c.track.anchor = np.mean(c.track.history, axis=0)
+        c.track.offset = c.position - c.track.anchor
+
+    def start_reset(c: _MotionInput):
+        c.track.offset = c.track.anchor - c.position     # no jump when leaving the anchor
+
+    def stop_reset(c: _MotionInput):
+        c.track.anchor = c.position.copy()
+
+    return HybridAutomaton(
+        "road_user_motion",
+        modes={UNKNOWN: Flow("p' = v, v' = w (Kalman CV); heading held", "p in road"),
+               MOVING: Flow("p' = v, v' = w (Kalman CV); heading' -> atan2(v)", "p in road"),
+               STOPPED: Flow("p' = 0, anchor' = k (p - anchor); heading' -> local flow", "p in road")},
+        initial=UNKNOWN,
+        transitions=[
+            Transition(UNKNOWN, MOVING, lambda c: c.window_full and c.starts, None, "starts",
+                       "|p(t) - p(t-W)|/W > v_min & |v| > 3 sigma_v"),
+            Transition(UNKNOWN, STOPPED, lambda c: c.window_full and not c.starts, stop_reset_from_unknown,
+                       "settles", "window full & not starts", "anchor := mean(window); offset := p - anchor"),
+            Transition(STOPPED, MOVING, lambda c: c.window_full and c.starts, start_reset, "starts",
+                       "|p(t) - p(t-W)|/W > v_min & |v| > 3 sigma_v", "offset := anchor - p"),
+            Transition(MOVING, STOPPED, lambda c: c.window_full and c.window_speed < 0.5 * c.min_speed,
+                       stop_reset, "stops", "|p(t) - p(t-W)|/W < v_min / 2", "anchor := p"),
+        ])
+
+
+@dataclass
+class _ObservationInput:
+    track: "_Track"
+    detected: bool
+    coast_frames: int
+
+
+def observation_automaton() -> HybridAutomaton:
+    """OBSERVED <-> COASTING -> LOST: a missing detection is bridged for coast_time."""
+
+    def miss(c: _ObservationInput):
+        c.track.lost_frames += 1
+
+    def found(c: _ObservationInput):
+        c.track.lost_frames = 0
+
+    return HybridAutomaton(
+        "road_user_observation",
+        modes={OBSERVED: Flow("measurement update each frame"),
+               COASTING: Flow("motion flow without measurements", "p in road & lost <= coast"),
+               LOST: Flow("removed")},
+        initial=OBSERVED,
+        transitions=[
+            Transition(OBSERVED, OBSERVED, lambda c: c.detected, found, "detected", "detected", "lost := 0"),
+            Transition(OBSERVED, COASTING, lambda c: not c.detected, miss, "missed", "not detected", "lost := lost + 1"),
+            Transition(COASTING, OBSERVED, lambda c: c.detected, found, "redetected",
+                       "detected (same ID, or a new ID within the handoff gate)", "lost := 0"),
+            Transition(COASTING, LOST, lambda c: not c.detected and c.track.lost_frames >= c.coast_frames,
+                       miss, "expired", "not detected & lost >= coast_frames", "lost := lost + 1"),
+            Transition(COASTING, COASTING, lambda c: not c.detected, miss, "missed", "not detected",
+                       "lost := lost + 1"),
+        ])
 
 
 class DynamicLogic:
@@ -301,6 +407,14 @@ class DynamicLogic:
         self.flow = LocalFlowField(cell_size=flow_cell_size)
         self._tracks: Dict[int, _Track] = {}
         self._active_ids: Optional[Set[int]] = None
+        self.motion = motion_automaton()
+        self.observation = observation_automaton()
+        # Evolution domain of coasting (road plane point -> inside the road). None = whole plane.
+        self.domain: Optional[Callable[[float, float], bool]] = None
+
+    def describe(self) -> str:
+        """The road-user hybrid automata (motion x observation)."""
+        return self.motion.describe() + "\n\n" + self.observation.describe()
 
     # ------------------------------------------------------------------ frame API
 
@@ -352,7 +466,7 @@ class DynamicLogic:
                 return self._state(track)
 
         track = self._tracks[track_id]
-        track.lost_frames = 0
+        track.observation = self.observation.jump(track.observation, _ObservationInput(track, True, self.coast_frames))
         track.kf.predict()
         track.kf.update(measurement, measurement_cov, self.outlier_gate)
         self._update_motion(track)
@@ -365,17 +479,21 @@ class DynamicLogic:
         for tid, track in self._tracks.items():
             if tid in active_ids:
                 continue
-            track.lost_frames += 1
-            if track.lost_frames <= self.coast_frames:
-                if track.moving is not False:
+            track.observation = self.observation.jump(track.observation,
+                                                      _ObservationInput(track, False, self.coast_frames))
+            if track.observation == COASTING:
+                if track.mode != STOPPED:
                     track.kf.predict()  # A stationary vehicle simply stays put
+                    if self.domain is not None and not self.domain(*track.kf.state[:2]):
+                        track.observation = LOST     # left the evolution domain (off the road / out of view)
+                        continue
                 coasting[tid] = self._state(track)
         return coasting
 
     def cleanup_stale(self, active_ids: set):
         """Drop vehicles that have been missing for longer than coast_time."""
         stale = [tid for tid, track in self._tracks.items()
-                 if tid not in active_ids and track.lost_frames > self.coast_frames]
+                 if tid not in active_ids and track.observation == LOST]
         for tid in stale:
             del self._tracks[tid]
 
@@ -403,29 +521,23 @@ class DynamicLogic:
         return best_id
 
     def _update_motion(self, track: _Track):
-        """Moving/stationary mode with hysteresis on windowed net displacement."""
+        """Motion automaton jump (moving/stationary with hysteresis on windowed net
+        displacement), then the STOPPED flow (anchor smoothing) and the decay of the
+        display offset."""
         position = track.kf.state[:2].copy()
         track.history.append(position)
 
-        if len(track.history) == track.history.maxlen:
+        window_full = len(track.history) == track.history.maxlen
+        window_speed, starts = 0.0, False
+        min_speed = track.profile.min_moving_speed
+        if window_full:
             window_speed = np.hypot(*(position - track.history[0])) / (self.motion_window * self.dt)
             instant_ok = np.hypot(*track.kf.state[2:]) > 3.0 * track.kf.velocity_sigma()
-            min_speed = track.profile.min_moving_speed
             starts = window_speed > min_speed and instant_ok
+        track.mode = self.motion.jump(track.mode, _MotionInput(track, position, window_full,
+                                                               window_speed, starts, min_speed))
 
-            if track.moving is None:
-                track.moving = starts
-                if not starts:
-                    track.anchor = np.mean(track.history, axis=0)
-                    track.offset = position - track.anchor
-            elif not track.moving and starts:
-                track.moving = True
-                track.offset = track.anchor - position
-            elif track.moving and window_speed < 0.5 * min_speed:
-                track.moving = False
-                track.anchor = position.copy()
-
-        if track.moving is False:
+        if track.mode == STOPPED:
             track.anchor += self.anchor_smoothing * (position - track.anchor)
         track.offset *= 0.85
 
@@ -433,7 +545,7 @@ class DynamicLogic:
         x, y, vx, vy = track.kf.state
         profile = track.profile
 
-        if track.moving:
+        if track.mode == MOVING:
             target = float(np.arctan2(vy, vx))
             if profile.use_flow:
                 self.flow.add(x, y, vx, vy)
@@ -459,7 +571,7 @@ class DynamicLogic:
         state, P = track.kf.state, track.kf.P
         trace = np.trace(P[:2, :2])
         confidence = max(0.0, min(1.0, 1.0 - trace / 100.0))
-        if track.moving is False:
+        if track.mode == STOPPED:
             (x, y), vx, vy = track.anchor + track.offset, 0.0, 0.0
         else:
             x, y, vx, vy = state
@@ -503,7 +615,7 @@ class DynamicLogic:
     def motion_known(self, track_id: int) -> bool:
         """True once the moving/stationary mode (and so the heading) is established."""
         track = self._tracks.get(track_id)
-        return track is not None and track.moving is not None
+        return track is not None and track.mode != UNKNOWN
 
     def position_covariance(self, track_id: int) -> Optional[np.ndarray]:
         """2x2 position covariance (m^2) of a track's filter."""

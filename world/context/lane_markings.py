@@ -1,6 +1,7 @@
-"""Road geometry from the empty road: background, lane markings, vanishing point.
+"""Lane markings of the empty road: background, road region, paint, segments, vanishing point.
 
-Stage 1 of the automatic camera calibration (TECHNICAL_NOTES 18):
+Evidence for the lane-marking calibration source (world/context/sources.py,
+TECHNICAL_NOTES 18):
 
 1. Empty-road background: frames sampled over the video are aligned to the
    reference frame (camera motion transforms), vehicle boxes (dilated) are masked
@@ -9,8 +10,9 @@ Stage 1 of the automatic camera calibration (TECHNICAL_NOTES 18):
    over time). Vehicles standing the whole time stay (their boxes are masked, so
    those pixels have no samples: `coverage`).
 2. Lane markings by colour, inside the road: the road region is where vehicles
-   drove (lower parts of their boxes accumulated); a marking pixel is white paint
-   (brighter than the local asphalt, nearly colourless) or yellow paint (LAB b).
+   drove (lower parts of their boxes accumulated); a marking pixel matches one of
+   the enabled paints of the marking catalog (world/context/paint.py: white =
+   brighter than the local asphalt and nearly colourless, yellow, blue, ...).
    Each elongated, uniformly coloured component (a dash, a piece of solid line)
    gives one segment along its principal axis, so short far dashes count.
 3. The road-direction vanishing point:
@@ -20,18 +22,16 @@ Stage 1 of the automatic camera calibration (TECHNICAL_NOTES 18):
 """
 
 from dataclasses import dataclass, field
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
 
+from world.context.paint import MarkingCatalog
+
 BOX_MARGIN = 0.15            # vehicle boxes are grown by this fraction before masking
 MEDIAN_ROWS = 64             # rows per chunk of the temporal median (memory)
 ASPHALT_BLUR = 31            # px; median window giving the local asphalt brightness
-MIN_WHITE_LIFT = 12.0        # LAB L above the local asphalt: weakest white paint
-LIFT_MADS = 5.0              # ... or this many robust std of the road surface above it
-MAX_WHITE_CHROMA = 14.0      # LAB chroma: white paint is nearly colourless
-MIN_YELLOW_B = 18.0          # LAB b: yellow paint
 MAX_PAINT_STD = 22.0         # LAB L std inside one marking: a single paint colour
 MIN_MARK_AREA = 6            # px
 MAX_MARK_AREA = 30000        # px
@@ -131,10 +131,11 @@ def road_region(frames: Sequence, transforms: Optional[Sequence], size: Tuple[in
     return cv2.dilate(road, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)))
 
 
-def marking_mask(background: np.ndarray, road: Optional[np.ndarray] = None) -> np.ndarray:
-    """Lane-marking pixels by colour: markings are a single paint colour on asphalt.
-    White: brighter than the local asphalt and nearly colourless; yellow: strong
-    yellow (LAB b) at least as bright as the asphalt. Only inside `road` if given."""
+def paint_masks(background: np.ndarray, road: Optional[np.ndarray] = None,
+                catalog: Optional[MarkingCatalog] = None) -> Dict[str, np.ndarray]:
+    """Per enabled paint, its pixels inside `road` (if given). Markings are a single
+    paint colour on asphalt, judged relative to the local asphalt brightness."""
+    catalog = catalog or MarkingCatalog()
     lab = cv2.cvtColor(background, cv2.COLOR_BGR2LAB)
     L = lab[..., 0].astype(np.float32)
     a = lab[..., 1].astype(np.float32) - 128
@@ -142,15 +143,20 @@ def marking_mask(background: np.ndarray, road: Optional[np.ndarray] = None) -> n
     asphalt = cv2.medianBlur(lab[..., 0], ASPHALT_BLUR).astype(np.float32)   # local road brightness
     lift = L - asphalt
     chroma = np.hypot(a, b)
+    hue = np.degrees(np.arctan2(b, a))
     region = road > 0 if road is not None else np.ones(L.shape, bool)
-    # robust brightness threshold over the road surface
-    vals = lift[region]
-    med = float(np.median(vals))
-    mad = float(np.median(np.abs(vals - med))) + 1e-6
-    white_lift = max(MIN_WHITE_LIFT, med + LIFT_MADS * 1.4826 * mad)
-    white = (lift > white_lift) & (chroma < MAX_WHITE_CHROMA)
-    yellow = (b > MIN_YELLOW_B) & (b > 2 * np.abs(a)) & (lift > -5)
-    return ((white | yellow) & region).astype(np.uint8) * 255
+    road_lift = lift[region]
+    return {p.name: p.mask(lift, chroma, hue, road_lift) & region for p in catalog.active_paints()}
+
+
+def marking_mask(background: np.ndarray, road: Optional[np.ndarray] = None,
+                 catalog: Optional[MarkingCatalog] = None) -> np.ndarray:
+    """Union of the enabled paints (uint8 0/255)."""
+    masks = paint_masks(background, road, catalog)
+    union = np.zeros(background.shape[:2], bool)
+    for m in masks.values():
+        union |= m
+    return union.astype(np.uint8) * 255
 
 
 def segments_from_mask(mask: np.ndarray, background: Optional[np.ndarray] = None) -> Tuple[np.ndarray, np.ndarray]:
@@ -171,13 +177,16 @@ def segments_from_mask(mask: np.ndarray, background: Optional[np.ndarray] = None
         pts = np.column_stack([xs + x, ys + y]).astype(np.float64)
         center = pts.mean(axis=0)
         _, sv, vt = np.linalg.svd(pts - center, full_matrices=False)
-        spread = sv / np.sqrt(len(pts))                      # std along / across the axis
-        length, width = 4.0 * spread[0], max(4.0 * spread[1], 1.0)
+        along = (pts - center) @ vt[0]
+        # extent along the axis (pixel centers: +1 px for the pixel size); 4 std would
+        # overstate a uniform bar by 15 %, which biases the dash ratio
+        t0, t1 = float(along.min()) - 0.5, float(along.max()) + 0.5
+        length = t1 - t0
+        width = max(4.0 * sv[1] / np.sqrt(len(pts)), 1.0)
         if length < MIN_SEGMENT_PX or length / width < MIN_ELONGATION:
             continue
         keep[i] = True
-        half = vt[0] * length / 2
-        segments.append([*(center - half), *(center + half)])
+        segments.append([*(center + vt[0] * t0), *(center + vt[0] * t1)])
     kept = np.where(keep[labels], 255, 0).astype(np.uint8)
     return kept, np.array(segments, np.float32).reshape(-1, 4)
 
@@ -257,8 +266,8 @@ def segment_vanishing_point(segments: np.ndarray, seed: int = 0,
 
 
 def lane_lines(background: np.ndarray, prior: Optional[Tuple[float, float]] = None,
-               road: Optional[np.ndarray] = None) -> LaneLines:
-    mask, segments = segments_from_mask(marking_mask(background, road), background)
+               road: Optional[np.ndarray] = None, catalog: Optional[MarkingCatalog] = None) -> LaneLines:
+    mask, segments = segments_from_mask(marking_mask(background, road, catalog), background)
     vp, inliers, residual = segment_vanishing_point(segments, prior=prior,
                                                     prior_radius=PRIOR_RADIUS * background.shape[1])
     return LaneLines(mask, segments, vp, inliers, residual)

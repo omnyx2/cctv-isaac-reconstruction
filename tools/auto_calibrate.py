@@ -1,5 +1,11 @@
-"""Automatic camera calibration, stage 1: empty-road background, lane markings and the
-road vanishing point, checked against ground truth (TECHNICAL_NOTES 18).
+"""Automatic camera calibration through the calibration context framework (world/context),
+checked against ground truth (TECHNICAL_NOTES 18, 19).
+
+Runs the automatic sources (lane markings METRIC, lane / traffic vanishing point
+PROJECTIVE) through the sound-and-complete selector, prints which one was admitted
+and why the others were not, and compares
+  stage 1  the lane / track vanishing points with the ground-truth one
+  stage 2  the metric camera (focal length, height, pitch) with the ground-truth camera
 
 Uses the perception caches (YOLO boxes + camera motion at 960 px width) written by
 tools/cache_detections.py (UA-DETRAC) and tools/eval_tum_accidents.py (TUM).
@@ -29,8 +35,10 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from analysis import road_geometry as rg  # noqa: E402
-from analysis.self_calibration import collect_tracks, estimate_vanishing_point  # noqa: E402
+from world.context import GeometryLevel, MarkingCatalog, select  # noqa: E402
+from world.context import lane_markings as rg  # noqa: E402
+from world.context.lane_metric import LaneMarkingSource  # noqa: E402
+from world.context.sources import LaneVanishingSource, TrafficFlowSource, lane_evidence, track_vanishing_point  # noqa: E402
 
 CACHE = PROJECT_ROOT / "data" / "cache"
 OUT = PROJECT_ROOT / "data" / "results" / "auto_calib"
@@ -67,7 +75,16 @@ def tum_case(seq: str, cam: str):
     axial = np.angle(np.mean(np.exp(2j * yaws))) / 2
     v = fit.P @ np.array([np.cos(axial), np.sin(axial), 0.0, 0.0])
     gt = (v[0] / v[2] * scale, v[1] / v[2] * scale)
-    return f"{seq}_{cam.replace('_camera_basler', '')}", cache, size, samples, gt
+    M = fit.P[:, :3]
+    center = -np.linalg.solve(M, fit.P[:, 3])
+    K_inv = np.linalg.inv(np.array([[fit.focal_px, 0, 960.0], [0, fit.focal_px, 600.0], [0, 0, 1]]))
+    forward = (K_inv @ M)[2]
+    forward /= np.linalg.norm(forward)
+    bottoms = [o.center[2] - (o.size[2] / 2 if fit.z_is_center else 0.0) for f in frames[::10] for o in f.objects]
+    gt_cam = {"focal_px": fit.focal_px * scale, "height_m": float(center[2] - np.median(bottoms)),
+              "pitch_deg": float(np.degrees(np.arcsin(-forward[2]))), "standard": "DE_autobahn"}
+    video = (str(TUM_ROOT / seq / "images" / cam), 25.0, (1920, 1200))
+    return f"{seq}_{cam.replace('_camera_basler', '')}", cache, size, samples, gt, gt_cam, video
 
 
 def detrac_case(seq: str):
@@ -80,27 +97,57 @@ def detrac_case(seq: str):
         for i in sample_indices(len(images)):
             yield cv2.imread(str(images[i])), boxes_of(cache["frames"][i]), cache["transforms"][i]
 
-    gt = None
+    gt, gt_cam = None, None
     config = PROJECT_ROOT / "config" / f"detrac_{seq}.yaml"
     if config.exists():
-        points = yaml.safe_load(open(config, encoding="utf-8"))["mapping"]["calibration_points"]
+        cfg = yaml.safe_load(open(config, encoding="utf-8"))
+        points = cfg["mapping"]["calibration_points"]
         H, _ = cv2.findHomography(np.float32([p[0] for p in points]), np.float32([p[1][:2] for p in points]))
         v = np.linalg.inv(H) @ np.array([0.0, 1.0, 0.0])
         gt = (v[0] / v[2], v[1] / v[2])
-    return f"detrac_{seq}", cache, size, samples, gt
+        cam = cfg["simulation"]["camera"]
+        gt_cam = {"focal_px": cam["focal_px"], "height_m": cam["position"][2], "pitch_deg": cam["pitch_deg"],
+                  "standard": "CN_expressway"}
+    return f"detrac_{seq}", cache, size, samples, gt, gt_cam, (str(folder), 25.0, size)
 
 
 # ------------------------------------------------------------------ one camera
 
-def evaluate(name, cache, size, samples, gt):
-    background = rg.empty_road(samples(), size)
-    try:
-        track_vp, n_tracks, track_res = estimate_vanishing_point(
-            collect_tracks(cache["frames"], cache["transforms"], size))
-    except ValueError:
-        track_vp, n_tracks, track_res = None, 0, float("nan")
-    road = rg.road_region(cache["frames"], cache["transforms"], size)
-    lanes = rg.lane_lines(background.image, prior=track_vp, road=road)
+def write_config(name: str, chosen, video, catalog_standards) -> Path:
+    """A runnable scenario config from an admitted METRIC hypothesis, at the video's resolution,
+    with its provenance (mapping.source) and the conditions it passed."""
+    path, fps, full_size = video
+    camera = chosen.camera.resized(tuple(full_size))
+    template = yaml.safe_load(open(PROJECT_ROOT / "config" / "TEMPLATE.yaml", encoding="utf-8"))
+    config = {
+        "video": {"path": Path(path).as_posix(), "fps": fps},
+        "yolo": template["yolo"],
+        "simulation": {"vehicle_dynamics": True, "ground_size": 400.0, "camera": camera.simulation_camera(),
+                       "lane_lines_x": chosen.lane_lines_x},
+        "mapping": {"source": f"auto:{chosen.source}", "calibration_points": camera.calibration_points()},
+        "context": {"allowed_standards": list(catalog_standards)},
+        "stabilization": {"enabled": True},
+        "display": template["display"],
+        "vlm": template.get("vlm", {}),
+    }
+    header = [f"# Automatic calibration ({chosen.source}, {chosen.level.name}) by tools/auto_calibrate.py",
+              f"# road standard {chosen.evidence.get('road_standard')}, focal {camera.focal_px:.0f} px, "
+              f"height {camera.height_m:.2f} m, pitch {np.degrees(camera.pitch_rad):.2f} deg",
+              "# conditions passed:"] + [f"#   {r.name}: {r.detail}" for r in chosen.judgement.results]
+    out = PROJECT_ROOT / "config" / f"auto_{name}.yaml"
+    out.write_text("\n".join(header) + "\n\n" + yaml.safe_dump(config, sort_keys=False, default_flow_style=None),
+                   encoding="utf-8")
+    return out
+
+
+def evaluate(name, cache, size, samples, gt, gt_cam, video=None, catalog=None, write=False):
+    inputs = {"image_size": size, "frames": cache["frames"], "transforms": cache["transforms"],
+              "samples": samples, "catalog": catalog or MarkingCatalog()}
+    selection = select([LaneMarkingSource(), LaneVanishingSource(), TrafficFlowSource()], inputs,
+                       required=GeometryLevel.METRIC)
+    background, road, lanes = lane_evidence(inputs)
+    tvp = track_vanishing_point(inputs)
+    track_vp = None if tvp is None else tvp[0]
 
     def err(p):
         return None if p is None or gt is None else round(float(np.hypot(p[0] - gt[0], p[1] - gt[1])), 1)
@@ -113,25 +160,46 @@ def evaluate(name, cache, size, samples, gt):
     pad = vis.shape[0] - background.image.shape[0]
     cv2.drawContours(vis, [c + np.array([0, pad]) for c in contours], -1, (255, 0, 255), 1)
     cv2.imwrite(str(OUT / f"{name}_lanes.jpg"), vis)
-    row = {"name": name, "size": size, "frames_used": background.n_frames,
+
+    chosen = selection.chosen
+    est = chosen.evidence
+    row = {"name": name, "size": size, "chosen": chosen.source, "level": chosen.level.name,
            "gt_vp": None if gt is None else [round(gt[0], 1), round(gt[1], 1)],
            "lane_vp": None if lanes.vanishing_point is None else [round(v, 1) for v in lanes.vanishing_point],
-           "lane_segments": int(len(lanes.segments)), "lane_inliers": int(lanes.inliers.sum()),
-           "lane_residual_px": round(lanes.residual_px, 2),
-           "track_vp": None if track_vp is None else [round(v, 1) for v in track_vp], "tracks": n_tracks,
+           "track_vp": None if track_vp is None else [round(v, 1) for v in track_vp],
            "err_lane_px": err(lanes.vanishing_point), "err_track_px": err(track_vp),
-           "uncovered_frac": round(float((background.coverage == 0).mean()), 4)}
-    print(f"{name:40} GT {row['gt_vp']}  lanes {row['lane_vp']} err {row['err_lane_px']} "
-          f"({row['lane_inliers']}/{row['lane_segments']} seg)  tracks {row['track_vp']} err {row['err_track_px']} "
-          f"({n_tracks} tr)", flush=True)
+           "gt_camera": gt_cam, "selection": selection.to_dict()}
+    for key in ("road_standard", "dash_ratio", "standard_support", "focal_px", "height_m", "pitch_deg", "lane_width_cv", "car_width_m"):
+        if key in est:
+            row[key] = est[key]
+    # stage 2 vs ground truth (whether admitted or not, if it got as far as an estimate)
+    lane_decision = next(d for d in selection.decisions if d.source == "lane_markings")
+    stage2 = {r.name: r.detail for r in lane_decision.judgement.results}
+    print(f"\n=== {name}: {chosen.source} ({chosen.level.name}) | VP err lanes {row['err_lane_px']} tracks {row['err_track_px']} px")
+    print(selection.report())
+    if chosen.source == "lane_markings" and gt_cam:
+        cam = chosen.camera
+        row["err_focal_pct"] = round(100 * (cam.focal_px / gt_cam["focal_px"] - 1), 1)
+        row["err_height_pct"] = round(100 * (cam.height_m / gt_cam["height_m"] - 1), 1)
+        row["err_pitch_deg"] = round(float(np.degrees(cam.pitch_rad)) - gt_cam["pitch_deg"], 2)
+        print(f"  vs GT: focal {cam.focal_px:.0f} / {gt_cam['focal_px']:.0f} px ({row['err_focal_pct']:+.1f}%), "
+              f"height {cam.height_m:.2f} / {gt_cam['height_m']:.2f} m ({row['err_height_pct']:+.1f}%), "
+              f"pitch {np.degrees(cam.pitch_rad):.2f} / {gt_cam['pitch_deg']:.2f} deg, standard {row.get('road_standard')} "
+              f"(expected {gt_cam['standard']}), lanes x {chosen.lane_lines_x}")
+    if write and chosen.level == GeometryLevel.METRIC and video is not None:
+        row["config"] = str(write_config(name, chosen, video, inputs["catalog"].standards))
+        print(f"  wrote {row['config']}")
     return row
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Auto calibration stage 1: background, lanes, vanishing point")
+    parser = argparse.ArgumentParser(description="Automatic calibration vs ground truth")
     parser.add_argument("--tum", nargs="*", default=[], help="sequence:camera, e.g. r09_s01:s050_camera_basler_south_50mm")
     parser.add_argument("--all-tum", action="store_true", help="every cached TUM camera")
     parser.add_argument("--detrac", nargs="*", default=[], help="UA-DETRAC sequences (MVI_xxxxx)")
+    parser.add_argument("--standards", nargs="*", default=None, help="restrict the road standards (e.g. DE_autobahn)")
+    parser.add_argument("--write-config", action="store_true",
+                        help="write config/auto_<name>.yaml for every camera calibrated METRIC")
     args = parser.parse_args()
 
     cases = [c.split(":") for c in args.tum]
@@ -142,20 +210,27 @@ def main():
             seq = "_".join(p.stem.split("_")[1:3])
             cases.append([seq, p.stem[len(f"tum_{seq}_"):]])
     rows = []
+    catalog = MarkingCatalog()
+    if args.standards:
+        catalog.standards = {k: v for k, v in catalog.standards.items() if k in args.standards}
     for seq, cam in cases:
         try:
-            rows.append(evaluate(*tum_case(seq, cam)))
+            rows.append(evaluate(*tum_case(seq, cam), catalog=catalog, write=args.write_config))
         except Exception as e:
             print(f"{seq} {cam}: skipped ({type(e).__name__}: {e})", flush=True)
     for seq in args.detrac:
-        rows.append(evaluate(*detrac_case(seq)))
+        rows.append(evaluate(*detrac_case(seq), catalog=catalog, write=args.write_config))
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "stage1.json").write_text(json.dumps(rows, indent=1))
+    (OUT / "results.json").write_text(json.dumps(rows, indent=1, default=str))
 
     def summary(key):
         e = [r[key] for r in rows if r[key] is not None]
         return f"{len(e)} cams, median {np.median(e):.1f}px, 90% {np.percentile(e, 90):.1f}px" if e else "none"
-    print(f"vanishing point error vs ground truth: lanes {summary('err_lane_px')} | tracks {summary('err_track_px')}")
+    print(f"\nvanishing point error vs ground truth: lanes {summary('err_lane_px')} | tracks {summary('err_track_px')}")
+    metric = [r for r in rows if "err_focal_pct" in r]
+    if metric:
+        print(f"metric (admitted lane_markings, {len(metric)} cams): focal error % {[r['err_focal_pct'] for r in metric]}, "
+              f"height error % {[r['err_height_pct'] for r in metric]}, pitch error deg {[r['err_pitch_deg'] for r in metric]}")
 
 
 if __name__ == "__main__":

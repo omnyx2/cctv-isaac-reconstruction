@@ -1,5 +1,6 @@
 """The whole world model, built from a config, shared by main.py and the tools.
 
+    calibration context (world/context: the admitted calibration, its road chart and domain)
     image detections + camera-motion transform
         -> CoordinateMapper   (ground-plane projection)
         -> WorldTracker       (DynamicLogic filtering + physical consistency)
@@ -12,6 +13,8 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from world.context import GeometryLevel, RoadContext, select
+from world.context.sources import default_sources
 from world.coordinate_mapper import CoordinateMapper
 from world.dynamic_logic import DynamicLogic
 from world.vehicle_dynamics import DrivenPose, FleetDriver
@@ -27,13 +30,17 @@ class WorldPipeline:
             image_size: (width, height) of the video
         """
         mapping = config.get("mapping", {})
-        points = mapping.get("calibration_points") or []
-        if len(points) < 4:
-            raise ValueError("mapping.calibration_points needs 4+ [[px, py], [wx, wy]] pairs "
-                             "(see tools/calibrate_camera.py)")
+        # The road context: the calibration admitted by its conditions (world/context).
+        # The world model needs the road plane in meters (METRIC).
+        selection = select(default_sources(offline=False), {"config": config, "image_size": tuple(image_size)},
+                           required=GeometryLevel.METRIC)
+        if not selection.sufficient:
+            raise ValueError("no metric calibration for this video (see tools/calibrate_camera.py or "
+                             "tools/auto_calibrate.py):\n" + selection.report())
+        self.context = RoadContext(selection.chosen, selection)
 
         self.mapper = CoordinateMapper(image_size[0], image_size[1])
-        self.mapper.calibrate_from_points([p[0] for p in points], [p[1][:2] for p in points])
+        self.mapper.homography = self.context.homography
 
         # default_heading: direction of travel along the road (+Y = away from the
         # camera), used for new objects where no traffic flow has been learned yet
@@ -42,6 +49,7 @@ class WorldPipeline:
             default_heading=np.radians(mapping.get("road_heading_deg", 90.0)),
             **config.get("dynamic_logic", {})
         )
+        self.dynamic_logic.domain = self.context.domain()   # evolution domain of the flows
 
         simulation = config.get("simulation", {})
         camera = simulation.get("camera") or {}

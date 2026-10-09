@@ -1,0 +1,48 @@
+# Automatic calibration (lane_markings, METRIC) by tools/auto_calibrate.py
+# road standard DE_autobahn, focal 2513 px, height 8.28 m, pitch 14.08 deg
+# conditions passed:
+#   lane_inliers >= 10: lane_inliers = 65
+#   lane_boundaries >= 3: lane_boundaries = 15
+#   dash_periods >= 4: dash_periods = 25
+#   3 <= hfov_deg <= 120: hfov_deg = 41.81
+#   3 <= height_m <= 50: height_m = 8.281
+#   lane_width_cv <= 0.2: lane_width_cv = 0.09147
+#   standard_support >= 0.5: standard_support = 0.5652
+#   standard_margin >= 0.25: standard_margin = 0.5652
+#   car box widths plausible: median car box width 2.45 m (400 boxes)
+
+video: {path: 'D:/datasets/TUMTraf-Accid3nD/data/r09_s01/images/s040_camera_basler_north_16mm',
+  fps: 25.0}
+yolo:
+  model_path: yolov8n.pt
+  confidence: 0.25
+  classes: [0, 2, 5, 7]
+  tracker_config: bytetrack.yaml
+simulation:
+  vehicle_dynamics: true
+  ground_size: 400.0
+  camera:
+    position: [0.0, 0.0, 8.281]
+    pitch_deg: 14.085
+    yaw_deg: -11.383
+    focal_px: 2513.4
+    image_size: [1920, 1200]
+  lane_lines_x: [-7.525, -3.878, -0.155, 0.038, 3.789, 7.586, 15.773, 16.511, 17.887,
+    20.75, 24.5, 28.484, 32.636, 37.382, 43.211]
+mapping:
+  source: auto:lane_markings
+  calibration_points:
+  - - [576.0, 1104.0]
+    - [0.606, 17.648]
+  - - [1344.0, 1104.0]
+    - [6.271, 16.507]
+  - - [672.0, 780.0]
+    - [2.003, 25.316]
+  - - [1248.0, 780.0]
+    - [7.95, 24.119]
+context:
+  allowed_standards: [DE_autobahn]
+stabilization: {enabled: true}
+display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
+vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'qwen2.5vl:7b',
+  interval_s: 4.0, max_side: 1344, timeout_s: 60.0}
