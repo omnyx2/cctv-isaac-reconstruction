@@ -18,6 +18,7 @@ yolo:
   confidence: 0.25
   classes: [0, 2, 5, 7]
   tracker_config: bytetrack.yaml
+  imgsz: 1920                  # native width: recall 0.38 -> 0.83 vs the default 640 (16 mm view), ~50 fps
 simulation:
   vehicle_dynamics: true
   ground_size: 400.0

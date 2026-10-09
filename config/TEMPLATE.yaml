@@ -16,6 +16,8 @@ yolo:
   confidence: 0.25          # best MOTA on UA-DETRAC (tools/eval_tracking.py)
   classes: [0, 2, 5, 7]     # COCO: person, car, bus, truck
   tracker_config: "bytetrack.yaml"
+  # imgsz: 1920             # YOLO input size; default 640. For high-resolution wide views use the
+                            # native width: far vehicles are otherwise lost (TUM 16 mm: recall 0.38 -> 0.83)
   # agnostic_nms: true      # default; one object cannot be both "car" and "truck"
   # half: false             # FP16 gave no speedup for yolov8n
 

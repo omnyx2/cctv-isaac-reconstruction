@@ -83,7 +83,8 @@ def tum_case(seq: str, cam: str):
     bottoms = [o.center[2] - (o.size[2] / 2 if fit.z_is_center else 0.0) for f in frames[::10] for o in f.objects]
     gt_cam = {"focal_px": fit.focal_px * scale, "height_m": float(center[2] - np.median(bottoms)),
               "pitch_deg": float(np.degrees(np.arcsin(-forward[2]))), "standard": "DE_autobahn"}
-    video = (str(TUM_ROOT / seq / "images" / cam), 25.0, (1920, 1200))
+    fps = float(round(1.0 / np.median(np.diff([f.timestamp for f in frames])), 2))   # south 16 mm: ~4.4, not 25
+    video = (str(TUM_ROOT / seq / "images" / cam), fps, (1920, 1200))
     return f"{seq}_{cam.replace('_camera_basler', '')}", cache, size, samples, gt, gt_cam, video
 
 
@@ -121,7 +122,7 @@ def write_config(name: str, chosen, video, catalog_standards, rejected: bool = F
     template = yaml.safe_load(open(PROJECT_ROOT / "config" / "TEMPLATE.yaml", encoding="utf-8"))
     config = {
         "video": {"path": Path(path).as_posix(), "fps": fps},
-        "yolo": template["yolo"],
+        "yolo": {**template["yolo"], "imgsz": int(full_size[0])},     # native width (far vehicles)
         "simulation": {"vehicle_dynamics": True, "ground_size": 400.0, "camera": camera.simulation_camera(),
                        "lane_lines_x": chosen.lane_lines_x},
         "mapping": {"source": f"auto:{chosen.source}", "calibration_points": camera.calibration_points()},
