@@ -246,6 +246,8 @@ def main():
     parser.add_argument("--all-tum", action="store_true", help="every cached TUM camera")
     parser.add_argument("--detrac", nargs="*", default=[], help="UA-DETRAC sequences (MVI_xxxxx)")
     parser.add_argument("--standards", nargs="*", default=None, help="restrict the road standards (e.g. DE_autobahn)")
+    parser.add_argument("--sample", type=int, default=0, help="evaluate only this many random TUM cameras")
+    parser.add_argument("--seed", type=int, default=0, help="seed of --sample")
     parser.add_argument("--store", action="store_true",
                         help="save admitted lane-marking calibrations per camera (data/calibrations/<camera>/<sequence>.json)")
     parser.add_argument("--use-store", action="store_true",
@@ -266,6 +268,10 @@ def main():
                 continue   # other work widths / native caches
             seq = "_".join(p.stem.split("_")[1:3])
             cases.append([seq, p.stem[len(f"tum_{seq}_"):]])
+    if args.sample and len(cases) > args.sample:
+        rng = np.random.default_rng(args.seed)
+        cases = [cases[i] for i in sorted(rng.choice(len(cases), args.sample, replace=False))]
+        print("sampled:", ", ".join(f"{s}:{c}" for s, c in cases))
     rows = []
     catalog = MarkingCatalog()
     if args.standards:
