@@ -22,9 +22,9 @@ the inputs dict.
 
 from typing import Optional, Tuple
 
-import cv2
 import numpy as np
 
+from world.geometry import homography_from_points
 from world.context.camera import CameraModel
 from world.context.conditions import Evidence, at_least, at_most, predicate
 from world.context.paint import MarkingCatalog
@@ -114,7 +114,7 @@ class ConfigPointsSource(CalibrationSource):
         points = config["mapping"]["calibration_points"]
         src = np.array([p[0] for p in points], dtype=np.float32)
         dst = np.array([p[1][:2] for p in points], dtype=np.float32)
-        H, _ = cv2.findHomography(src, dst)            # same call as CoordinateMapper
+        H = homography_from_points(points)
         h = np.column_stack([src, np.ones(len(src))]) @ H.T
         mapped = h[:, :2] / h[:, 2:3]
         result = Evidence()

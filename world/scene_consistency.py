@@ -104,9 +104,13 @@ def count_overlaps(objects: Sequence) -> int:
 Mobility = Callable[[object, np.ndarray], Tuple[float, np.ndarray]]
 
 
+SEPARATION_PASSES = 5      # resolution sweeps (one separation can create another overlap)
+SEPARATION_MARGIN = 0.1    # m of clearance left between separated footprints
+
+
 def resolve_overlaps(objects: Sequence, mobility: Mobility,
                      on_move: Optional[Callable[[object], None]] = None,
-                     passes: int = 5, margin: float = 0.1) -> int:
+                     passes: int = SEPARATION_PASSES, margin: float = SEPARATION_MARGIN) -> int:
     """
     Remove footprint overlaps by the minimum translation (SAT), shared between the
     two objects in proportion to their mobility and along their allowed directions.

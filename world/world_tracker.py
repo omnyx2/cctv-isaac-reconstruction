@@ -35,8 +35,6 @@ SAME_DEPTH_RATIO = 0.1           # |bottom difference| / larger box height
 # A coasting track overlapping a track younger than this (frames) was re-identified
 # under that new ID; next to an established track it is a separate, briefly missed object
 REIDENTIFIED_MAX_AGE = 25
-SEPARATION_MARGIN = 0.1          # m of clearance left after separating footprints
-SEPARATION_PASSES = 5
 
 
 @dataclass
@@ -271,8 +269,7 @@ class WorldTracker:
         # Remaining overlaps are position error: minimum translation, shared in
         # proportion to each object's position variance along the separating axis
         self.stats["separations"] += resolve_overlaps(
-            [objects[t] for t in sorted(objects)], self._mobility,
-            passes=SEPARATION_PASSES, margin=SEPARATION_MARGIN)
+            [objects[t] for t in sorted(objects)], self._mobility)
 
     def _mobility(self, obj: WorldObject, axis: np.ndarray) -> Tuple[float, np.ndarray]:
         """Position variance along `axis` (more uncertain = moves more); free direction.

@@ -35,6 +35,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from world.geometry import homography_from_points  # noqa: E402
 from world.context import GeometryLevel, MarkingCatalog, select  # noqa: E402
 from world.context import lane_markings as rg  # noqa: E402
 from world.context.lane_metric import LaneMarkingSource  # noqa: E402
@@ -134,7 +135,7 @@ def detrac_case(seq: str):
     if config.exists():
         cfg = yaml.safe_load(open(config, encoding="utf-8"))
         points = cfg["mapping"]["calibration_points"]
-        H, _ = cv2.findHomography(np.float32([p[0] for p in points]), np.float32([p[1][:2] for p in points]))
+        H = homography_from_points(points)
         v = np.linalg.inv(H) @ np.array([0.0, 1.0, 0.0])
         gt = (v[0] / v[2], v[1] / v[2])
         cam = cfg["simulation"]["camera"]

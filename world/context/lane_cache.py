@@ -18,6 +18,8 @@ from typing import List, Optional
 
 import numpy as np
 
+from world.geometry import homography_from_points
+
 CACHE_DIR = Path("data") / "cache" / "lanes"
 
 
@@ -47,21 +49,9 @@ def load_cached(config: dict, project_root: Path) -> Optional[List[dict]]:
 
 
 def homography_from_config(config: dict) -> Optional[np.ndarray]:
-    """Image (video pixels) -> road (m) homography of the config's calibration points."""
-    import cv2
-
-    points = (config.get("mapping") or {}).get("calibration_points") or []
-    if len(points) < 4:
-        return None
-    src = np.array([p[0] for p in points], dtype=np.float32)
-    dst = np.array([p[1][:2] for p in points], dtype=np.float32)
-    H, _ = cv2.findHomography(src, dst)
-    if H is None:
-        return None
-    # The overall sign is arbitrary; make the road in front of the camera (the
-    # calibration points) map with a positive scale, as markings_on_road expects
-    h = np.column_stack([src, np.ones(len(src))]) @ H.T
-    return -H if np.median(h[:, 2]) < 0 else H
+    """Image (video pixels) -> road (m) homography of the config's calibration points,
+    oriented as markings_on_road expects (road in front: positive scale)."""
+    return homography_from_points((config.get("mapping") or {}).get("calibration_points") or [], oriented=True)
 
 
 def horizon_y(H: np.ndarray, width: float) -> float:

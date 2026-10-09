@@ -51,6 +51,7 @@ from collections import deque
 from typing import Callable, Dict, Optional, Set, Tuple
 from dataclasses import dataclass
 
+from world.geometry import wrap_angle
 from world.hybrid import Flow, HybridAutomaton, Transition
 
 # Motion modes
@@ -59,11 +60,6 @@ UNKNOWN, MOVING, STOPPED = "unknown", "moving", "stopped"
 TENTATIVE, CONFIRMED, HIDDEN = "tentative", "confirmed", "hidden"
 EXITED, RETRACTED, LOST = "exited", "retracted", "lost"
 ENDED = (EXITED, RETRACTED, LOST)
-
-
-def wrap_angle(angle: float) -> float:
-    """Wrap to [-pi, pi)."""
-    return (angle + np.pi) % (2 * np.pi) - np.pi
 
 
 @dataclass
@@ -532,8 +528,6 @@ class DynamicLogic:
         track_id: int,
         x: float,
         y: float,
-        vx: float = 0.0,
-        vy: float = 0.0,
         measurement_cov: Optional[np.ndarray] = None,
         agent: str = "vehicle",
         emerging: bool = False
@@ -545,7 +539,6 @@ class DynamicLogic:
             track_id: Vehicle tracking ID
             x: Measured X position (meters)
             y: Measured Y position (meters)
-            vx, vy: Unused (velocity is estimated by the filter); kept for compatibility
             measurement_cov: 2x2 position covariance (m^2), e.g. from
                 CoordinateMapper.position_covariance
             agent: "vehicle" or "person" (selects the motion profile)

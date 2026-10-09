@@ -22,15 +22,8 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
+from world.geometry import wrap_angle
 from world.scene_consistency import dimensions, resolve_overlaps
-
-SEPARATION_MARGIN = 0.1   # m clearance left between separated footprints
-SEPARATION_PASSES = 5
-
-
-def wrap_angle(angle: float) -> float:
-    return (angle + np.pi) % (2 * np.pi) - np.pi
-
 
 @dataclass
 class VehicleParams:
@@ -248,8 +241,7 @@ class FleetDriver:
             if follower is not None and p.driven:
                 follower.model.s.x, follower.model.s.y = p.x, p.y
 
-        self.separations += resolve_overlaps(poses, mobility, on_move=write_back,
-                                             passes=SEPARATION_PASSES, margin=SEPARATION_MARGIN)
+        self.separations += resolve_overlaps(poses, mobility, on_move=write_back)
 
     def reset(self):
         self._followers.clear()

@@ -25,14 +25,7 @@ import cv2
 import numpy as np
 
 from world.context.selector import CalibrationHypothesis, GeometryLevel, Selection
-
-
-def front_oriented(H: np.ndarray, image_size: Tuple[int, int]) -> np.ndarray:
-    """H scaled so that the bottom centre of the image (road in front of the camera)
-    has a positive homogeneous coordinate. findHomography's overall sign is
-    arbitrary; tests "behind the camera" (w <= 0) need this one."""
-    w, h = image_size
-    return -H if (H @ np.array([w / 2.0, h - 1.0, 1.0]))[2] < 0 else H
+from world.geometry import front_oriented
 
 
 @dataclass

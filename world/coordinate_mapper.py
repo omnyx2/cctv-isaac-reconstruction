@@ -1,8 +1,7 @@
 """Image <-> ground plane mapping for a calibrated CCTV camera."""
 
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
-import cv2
 import numpy as np
 
 
@@ -12,7 +11,7 @@ class CoordinateMapper:
 
         world = H . T . pixel
 
-    H: ground-plane homography from calibration points (tools/calibrate_camera.py)
+    H: ground-plane homography of the admitted calibration (world/context, set by WorldPipeline)
     T: current frame -> calibration frame (camera motion compensation,
        perception/stabilizer.py); identity when the camera does not move
     """
@@ -22,13 +21,6 @@ class CoordinateMapper:
         self.image_height = image_height
         self.homography: Optional[np.ndarray] = None
         self.frame_transform: Optional[np.ndarray] = None
-
-    def calibrate_from_points(self, pixel_points: List[Tuple[float, float]],
-                              world_points: List[Tuple[float, float]]):
-        """Ground-plane homography from 4+ pixel <-> world (X, Y) correspondences."""
-        src = np.array(pixel_points, dtype=np.float32)
-        dst = np.array(world_points, dtype=np.float32)
-        self.homography, _ = cv2.findHomography(src, dst)
 
     def set_frame_transform(self, transform: Optional[np.ndarray]):
         """3x3 transform from the current frame to the calibration frame. None = identity."""
