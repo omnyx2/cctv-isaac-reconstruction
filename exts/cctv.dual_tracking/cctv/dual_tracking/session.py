@@ -2,7 +2,7 @@
 
 The same stages as main.py — perception process (YOLO + ByteTrack + camera motion),
 world model (world/pipeline.py), vehicle prims (simulation/vehicle_controller.py),
-optional VLM scene analysis (perception/vlm) — but event driven: Kit calls tick()
+frames offered to the VLM (vlm_controller.py) — but event driven: Kit calls tick()
 on every app update, and tick() must never block. It takes the next perception
 result only when one is ready and the video clock says it is due, so the replay
 runs at the video frame rate while the viewport keeps rendering.
@@ -104,15 +104,17 @@ class ReplaySession:
         self.fps = 25.0
         self.objects = 0
         self.real_view: Optional[np.ndarray] = None    # latest frame with tracks drawn (BGR)
-        self.vlm_text = ""
-        self.vlm_accident = False
+        self.last_frame: Optional[np.ndarray] = None   # latest raw frame (BGR), for on-demand VLM analysis
+        self.last_time_s = 0.0
         self.on_frame: Optional[Callable[["ReplaySession"], None]] = None   # after each processed frame
+        # Every raw frame goes here (frame, frame_id, video time s): the VLM controller
+        self.frame_sink: Optional[Callable[[np.ndarray, int, float], None]] = None
+        self.on_restart: Optional[Callable[[], None]] = None
 
         self._perception = None
         self._world = None
         self._vehicles = None
         self._drawer = None
-        self._vlm = None
         self._next_due: Optional[float] = None
         self._fps_times: List[float] = []
 
@@ -136,7 +138,6 @@ class ReplaySession:
 
         from perception.perception_worker import PerceptionWorker
         from perception.video_player import VideoPlayer
-        from perception.vlm import create_analyzer
         from perception.yolo_tracker import YOLOTracker
         from simulation.scene_builder import build_scene, show_camera_in_viewport
         from simulation.vehicle_controller import VehicleController
@@ -170,12 +171,6 @@ class ReplaySession:
             stabilize=self.config.get("stabilization", {}).get("enabled", False),
             fps=video.get("fps"), python_executable=perception_python(), extra_paths=perception_import_paths())
         self._perception.start()
-
-        self._vlm = create_analyzer(self.config)
-        if self._vlm is not None and not self._vlm.start():
-            self.vlm_text = f"VLM off: {self._vlm.unavailable}"
-            self.log(f"[CCTV] {self.vlm_text}")
-            self._vlm = None
         self.log(f"[CCTV] started {video['path']}: {size[0]}x{size[1]} @ {self.fps:.1f} FPS, "
                  f"{self.total_frames} frames")
 
@@ -191,17 +186,14 @@ class ReplaySession:
         self._perception.start()
         self._world.reset()
         self._vehicles.clear_all()
-        if self._vlm is not None:
-            self._vlm.reset()
+        if self.on_restart is not None:
+            self.on_restart()
         self.frame_id, self._next_due, self.state = 0, None, self.RUNNING
 
     def stop(self):
         if self._perception is not None:
             self._perception.stop()
             self._perception = None
-        if self._vlm is not None:
-            self._vlm.stop()
-            self._vlm = None
         if self.state in (self.RUNNING, self.PAUSED):
             self.state = self.IDLE
 
@@ -245,12 +237,9 @@ class ReplaySession:
                 vehicle_type=pose.class_name, steer=pose.steer)
         self._vehicles.cleanup_stale({pose.track_id for pose in poses})
 
-        if self._vlm is not None:
-            self._vlm.submit(frame_data.frame, frame_data.frame_id, frame_data.timestamp_ms / 1000.0)
-            for analysis in self._vlm.poll():
-                self.vlm_text = f"@{analysis.video_time_s:.0f}s ({analysis.latency_s:.1f}s): {analysis.summary}"
-                self.vlm_accident = analysis.accident
-                self.log(f"[CCTV VLM]{' ACCIDENT' if analysis.accident else ''} {self.vlm_text}")
+        self.last_frame, self.last_time_s = frame_data.frame, frame_data.timestamp_ms / 1000.0
+        if self.frame_sink is not None:
+            self.frame_sink(frame_data.frame, frame_data.frame_id, self.last_time_s)
 
         self.frame_id = frame_data.frame_id
         self.objects = len(poses)

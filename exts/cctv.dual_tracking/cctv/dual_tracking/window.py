@@ -16,7 +16,8 @@ PREVIEW_WIDTH = 640
 
 class ControlWindow:
     def __init__(self, project_root: Path, on_start: Callable[[Path, Optional[str]], None],
-                 on_pause: Callable[[], None], on_restart: Callable[[], None], on_stop: Callable[[], None]):
+                 on_pause: Callable[[], None], on_restart: Callable[[], None], on_stop: Callable[[], None],
+                 on_vlm_console: Optional[Callable[[], None]] = None):
         self.project_root = project_root
         self._on_start, self._on_pause, self._on_restart, self._on_stop = on_start, on_pause, on_restart, on_stop
         self.configs: List[Path] = runnable_configs(project_root)
@@ -41,10 +42,12 @@ class ControlWindow:
                     self._pause_button = ui.Button("Pause", clicked_fn=self._on_pause)
                     ui.Button("Restart", clicked_fn=self._on_restart)
                     ui.Button("Stop", clicked_fn=self._on_stop)
+                    if on_vlm_console is not None:
+                        ui.Button("VLM Console", clicked_fn=on_vlm_console)
                 self._status = ui.Label("idle", height=18)
                 ui.ImageWithProvider(self._provider, height=PREVIEW_WIDTH * 10 // 16, width=PREVIEW_WIDTH,
                                      fill_policy=ui.IwpFillPolicy.IWP_PRESERVE_ASPECT_FIT)
-                self._vlm = ui.Label("VLM: off (config vlm.enabled)", height=36, word_wrap=True)
+                self._vlm = ui.Label("VLM: off (VLM Console)", height=36, word_wrap=True)
         self._on_config_changed()
 
     # ------------------------------------------------------------------ selection
@@ -112,6 +115,16 @@ class ControlWindow:
 
     # ------------------------------------------------------------------ display
 
+    def show_vlm(self, latest, status: str):
+        """Latest VLM result (perception/vlm SceneAnalysis) or the controller status."""
+        if latest is None:
+            self._vlm.text = f"VLM: {status}"
+            return
+        text = latest.error or latest.summary
+        self._vlm.text = (f"VLM{' ACCIDENT' if latest.accident else ''} @{latest.video_time_s:.0f}s "
+                          f"({latest.latency_s:.1f}s): {text}")
+        self._vlm.style = {"color": 0xFF4040FF} if latest.accident else {}
+
     def show_status(self, session: Optional[ReplaySession]):
         if session is None:
             self._status.text = "idle"
@@ -122,9 +135,6 @@ class ControlWindow:
             text += f" | {session.message}"
         self._status.text = text
         self._pause_button.text = "Resume" if session.state == ReplaySession.PAUSED else "Pause"
-        if session.vlm_text:
-            self._vlm.text = ("VLM ACCIDENT " if session.vlm_accident else "VLM ") + session.vlm_text
-            self._vlm.style = {"color": 0xFF4040FF} if session.vlm_accident else {}
 
     def show_frame(self, bgr: np.ndarray):
         h, w = bgr.shape[:2]

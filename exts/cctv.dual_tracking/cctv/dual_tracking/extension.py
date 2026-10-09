@@ -6,6 +6,10 @@ Unattended run of one scenario (snapshots, quit at the end):
     C:\\isaacsim\\isaac-sim.bat --ext-folder exts --enable cctv.dual_tracking
         --/exts/cctv.dual_tracking/autostart_config=config/tum_r09_s01_south50.yaml
         --/exts/cctv.dual_tracking/snapshot_dir=C:/tmp/snaps --/exts/cctv.dual_tracking/quit_on_finish=true
+        [--/exts/cctv.dual_tracking/vlm_periodic=true --/exts/cctv.dual_tracking/vlm_log=true]
+
+Windows: "CCTV Dual Tracking" (scenario/video, replay) and "CCTV VLM Console"
+(VLM connection, model, timing, prompt, tests, statistics, results).
 """
 
 import sys
@@ -20,6 +24,7 @@ import omni.kit.app
 
 SETTINGS = "/exts/cctv.dual_tracking"
 PREVIEW_INTERVAL_S = 0.1     # real-view refresh in the window
+CONSOLE_INTERVAL_S = 0.25    # VLM console refresh
 AUTOSTART_DELAY_UPDATES = 30 # let the app and viewport settle before an autostart
 
 
@@ -34,6 +39,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         carb.log_info(f"[cctv.dual_tracking] project root {self.project_root}")
 
         from .session import ReplaySession, load_config  # noqa: F401  (project importable now)
+        from .vlm_controller import VLMController
+        from .vlm_window import VLMWindow
         from .window import ControlWindow
 
         self.session = None
@@ -44,8 +51,16 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self._snapshot_dir = Path(snapshot_dir) if snapshot_dir else None
         self._snapshot_every = int(settings.get(f"{SETTINGS}/snapshot_every") or 125)
         self._quit_on_finish = bool(settings.get(f"{SETTINGS}/quit_on_finish"))
+        self._last_console = 0.0
 
-        self.window = ControlWindow(self.project_root, self.start, self.toggle_pause, self.restart, self.stop)
+        self.vlm = VLMController(self.project_root)
+        if settings.get(f"{SETTINGS}/vlm_log"):
+            self.vlm.log_path = self.project_root / "data" / "results" / "vlm" / "extension_log.jsonl"
+        self.window = ControlWindow(self.project_root, self.start, self.toggle_pause, self.restart, self.stop,
+                                    on_vlm_console=lambda: self.vlm_window.show())
+        self.vlm_window = VLMWindow(self.vlm, self.project_root, self._current_frame)
+        if settings.get(f"{SETTINGS}/vlm_periodic"):
+            self.vlm.set_periodic(True)
         self._update_sub = omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(
             self._on_update, name="cctv.dual_tracking.update")
 
@@ -64,6 +79,10 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         print(f"[CCTV] scenario {config_path.name}" + (f", video {video_override}" if video_override else ""))
         self.session = ReplaySession(config)
         self.session.on_frame = self._on_frame
+        self.session.frame_sink = self.vlm.submit
+        self.session.on_restart = self.vlm.reset
+        self.vlm.reset()
+        self.vlm.apply_config(config.get("vlm") or {})
         self.session.start()
 
     def toggle_pause(self):
@@ -78,14 +97,31 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         if self.session is not None:
             self.session.stop()
 
+    def _current_frame(self):
+        session = self.session
+        if session is None or session.last_frame is None:
+            return None
+        return session.last_frame, session.frame_id, session.last_time_s
+
     # ------------------------------------------------------------------ app loop
 
     def _on_update(self, _event):
         self._updates += 1
         if self._autostart and self._updates == AUTOSTART_DELAY_UPDATES:
+            # Once per process: a re-created extension instance (reload while quitting) must not start again
+            carb.settings.get_settings().set(f"{SETTINGS}/autostart_config", "")
+            if carb.settings.get_settings().get(f"{SETTINGS}/quitting"):
+                return
             path = Path(self._autostart)
             self.window.select_config(path if path.is_absolute() else self.project_root / path)
             self.start(path)
+        self.vlm.poll()
+        now = time.perf_counter()
+        if now - self._last_console >= CONSOLE_INTERVAL_S:
+            self._last_console = now
+            self.window.show_vlm(self.vlm.latest, self.vlm.status)
+            if self.vlm_window.visible:
+                self.vlm_window.refresh()
         session = self.session
         if session is None:
             return
@@ -94,6 +130,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         if session.state in (session.FINISHED, session.FAILED) and self._quit_on_finish:
             self._quit_on_finish = False
             print(f"[CCTV] {session.state}, quitting")
+            carb.settings.get_settings().set(f"{SETTINGS}/quitting", True)
+            self.vlm.set_periodic(False)
             omni.kit.app.get_app().post_quit()
 
     def _on_frame(self, session):
@@ -118,6 +156,11 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
     def on_shutdown(self):
         self.stop()
         self._update_sub = None
+        if getattr(self, "vlm", None) is not None:
+            self.vlm.shutdown()
+        if getattr(self, "vlm_window", None) is not None:
+            self.vlm_window.destroy()
+            self.vlm_window = None
         if getattr(self, "window", None) is not None:
             self.window.destroy()
             self.window = None
