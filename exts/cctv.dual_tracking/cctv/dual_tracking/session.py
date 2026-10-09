@@ -93,6 +93,43 @@ def perception_import_paths(modules=("torch", "ultralytics", "cv2", "numpy", "ya
     return paths
 
 
+def build_stage(config: dict) -> str:
+    """A fresh USD stage with the scenario's calibrated CCTV camera, ground, light and lane
+    markings, shown in the viewport. Returns the camera prim path."""
+    import omni.usd
+    from pxr import UsdGeom
+
+    from simulation.scene_builder import build_scene, show_camera_in_viewport
+
+    context = omni.usd.get_context()
+    context.new_stage()
+    stage = context.get_stage()
+    UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+    UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+    simulation = config.get("simulation", {})
+    camera_path = build_scene(stage, simulation.get("ground_size", 100.0), simulation.get("camera_height", 10.0),
+                              simulation.get("camera"), simulation.get("lane_lines_x"),
+                              simulation.get("lane_markings"))
+    show_camera_in_viewport(camera_path)
+    return camera_path
+
+
+def first_frame(config: dict):
+    """(first video frame (BGR), (width, height)) or (None, None)."""
+    from perception.video_player import VideoPlayer
+
+    video = config.get("video", {})
+    if not Path(video.get("path", "")).exists():
+        return None, None
+    player = VideoPlayer(video["path"], fps=video.get("fps"))
+    if not player.open():
+        return None, None
+    frame = next(iter(player.frames()), None)
+    size = (player.width, player.height)
+    player.close()
+    return (None if frame is None else frame.frame), size
+
+
 class ReplaySession:
     IDLE, RUNNING, PAUSED, FINISHED, FAILED = "idle", "running", "paused", "finished", "failed"
 
@@ -140,12 +177,10 @@ class ReplaySession:
 
     def _start(self):
         import omni.usd
-        from pxr import UsdGeom
 
         from perception.perception_worker import PerceptionWorker
         from perception.video_player import VideoPlayer
         from perception.yolo_tracker import YOLOTracker
-        from simulation.scene_builder import build_scene, show_camera_in_viewport
         from simulation.vehicle_controller import VehicleController
         from world.pipeline import WorldPipeline
 
@@ -160,17 +195,8 @@ class ReplaySession:
         player.close()
 
         # Fresh stage with the calibrated CCTV camera
-        context = omni.usd.get_context()
-        context.new_stage()
-        stage = context.get_stage()
-        UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
-        UsdGeom.SetStageMetersPerUnit(stage, 1.0)
-        simulation = self.config.get("simulation", {})
-        camera_path = build_scene(stage, simulation.get("ground_size", 100.0), simulation.get("camera_height", 10.0),
-                                  simulation.get("camera"), simulation.get("lane_lines_x"),
-                                  simulation.get("lane_markings"))
-        show_camera_in_viewport(camera_path)
-        self._vehicles = VehicleController(stage=stage)
+        build_stage(self.config)
+        self._vehicles = VehicleController(stage=omni.usd.get_context().get_stage())
 
         self._world = WorldPipeline(self.config, self.fps, size)
         self._drawer = YOLOTracker(**self.config.get("yolo", {}))   # drawing only; YOLO runs in the child

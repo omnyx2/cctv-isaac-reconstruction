@@ -12,16 +12,19 @@ from .calibration import STANDARDS, AutoCalibration
 from .session import ReplaySession, config_for_video, runnable_configs
 
 VIDEO_EXTENSIONS = ("*.mp4", "*.avi", "*.mkv", "*.mov")
-PREVIEW_WIDTH = 720
+PREVIEW_WIDTH = 720           # pixels the real view is resized to (the widget fits it to the pane)
+PREVIEW_HEIGHT = 430          # widget height; the image keeps its aspect inside
 
 
 class ControlWindow:
     def __init__(self, project_root: Path, on_start: Callable[[Path, Optional[str], bool], None],
                  on_pause: Callable[[], None], on_restart: Callable[[], None], on_stop: Callable[[], None],
                  on_vlm_console: Optional[Callable[[], None]] = None,
-                 on_layout: Optional[Callable[[], None]] = None):
+                 on_layout: Optional[Callable[[], None]] = None,
+                 on_select: Optional[Callable[[Path], None]] = None):
         self.project_root = project_root
         self._on_start, self._on_pause, self._on_restart, self._on_stop = on_start, on_pause, on_restart, on_stop
+        self._on_select = None          # set after the widgets exist (the combo fires while building)
         self.configs: List[Path] = runnable_configs(project_root)
         self.video_override: Optional[str] = None
         self._calib_lines: List[str] = []
@@ -33,50 +36,54 @@ class ControlWindow:
         with self.window.frame:
             # Width bound to the window: a long label must wrap, not widen the content
             with ui.ScrollingFrame(horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF):
-                with ui.VStack(spacing=6, height=0):
-                    self._settings_frame = ui.CollapsableFrame("Scenario, video, calibration", height=0)
-                    with self._settings_frame:
-                        with ui.VStack(spacing=6, height=0):
-                            ui.Label("Scenario (calibrated config)", height=18)
-                            self._combo = ui.ComboBox(0, *[c.stem for c in self.configs])
-                            self._combo.model.add_item_changed_fn(lambda *_: self._on_config_changed())
-                            with ui.HStack(height=24, spacing=4):
-                                ui.Label("Video", width=50)
-                                self._video_field = ui.StringField(read_only=True)
-                                ui.Button("Browse...", width=90, clicked_fn=self._browse)
-                                ui.Button("Clear", width=60, clicked_fn=self._clear_video)
-                            self._note = ui.Label("", height=18, word_wrap=True, style={"color": 0xFF88CCFF})
-                            with ui.HStack(height=22, spacing=6):
-                                self._auto = ui.CheckBox(width=20)
-                                self._auto.model.set_value(True)
-                                self._auto.model.add_value_changed_fn(lambda *_: self._update_note())
-                                ui.Label("Auto-calibrate videos without a config", width=250)
-                                ui.Label("Road", width=34)
-                                self._standard = ui.ComboBox(0, "any", *STANDARDS, width=150)
-                                ui.Label("s", width=10)
-                                self._seconds = ui.FloatField(width=40)
-                                self._seconds.model.set_value(20.0)
-                            self._calib_status = ui.Label("", height=18, word_wrap=True)
-                            self._lanes_status = ui.Label("", height=18, word_wrap=True)
-                            with ui.CollapsableFrame("Calibration conditions / lane markings", collapsed=True, height=0):
-                                with ui.ScrollingFrame(height=140):
-                                    self._calib_log = ui.Label("", word_wrap=True, alignment=ui.Alignment.LEFT_TOP,
-                                                               style={"font_size": 13})
-                    with ui.HStack(height=30, spacing=4):
-                        ui.Button("Start", clicked_fn=self._start)
-                        self._pause_button = ui.Button("Pause", clicked_fn=self._on_pause)
-                        ui.Button("Restart", clicked_fn=self._on_restart)
-                        ui.Button("Stop", clicked_fn=self._on_stop)
-                        if on_vlm_console is not None:
-                            ui.Button("VLM Console", clicked_fn=on_vlm_console)
-                        if on_layout is not None:
-                            ui.Button("Layout", width=70, clicked_fn=on_layout,
-                                      tooltip="Presentation layout: windows around the viewport, the rest hidden")
-                    self._status = ui.Label("idle", height=18)
-                    ui.ImageWithProvider(self._provider, height=PREVIEW_WIDTH * 10 // 16, width=PREVIEW_WIDTH,
-                                         fill_policy=ui.IwpFillPolicy.IWP_PRESERVE_ASPECT_FIT)
-                    self._vlm = ui.Label("VLM: off (VLM Console)", height=36, word_wrap=True)
+                with ui.HStack():
+                    with ui.VStack(spacing=6, height=0):
+                        self._settings_frame = ui.CollapsableFrame("Scenario, video, calibration", height=0)
+                        with self._settings_frame:
+                            with ui.VStack(spacing=6, height=0):
+                                ui.Label("Scenario (calibrated config)", height=18)
+                                self._combo = ui.ComboBox(0, *[c.stem for c in self.configs])
+                                self._combo.model.add_item_changed_fn(lambda *_: self._on_config_changed())
+                                with ui.HStack(height=24, spacing=4):
+                                    ui.Label("Video", width=50)
+                                    self._video_field = ui.StringField(read_only=True, width=ui.Fraction(1))
+                                    ui.Button("Browse...", width=80, clicked_fn=self._browse)
+                                    ui.Button("Clear", width=50, clicked_fn=self._clear_video)
+                                self._note = ui.Label("", height=18, word_wrap=True, style={"color": 0xFF88CCFF})
+                                with ui.HStack(height=22, spacing=6):
+                                    self._auto = ui.CheckBox(width=20)
+                                    self._auto.model.set_value(True)
+                                    self._auto.model.add_value_changed_fn(lambda *_: self._update_note())
+                                    ui.Label("Auto-calibrate videos without a config", width=250)
+                                    ui.Label("Road", width=34)
+                                    self._standard = ui.ComboBox(0, "any", *STANDARDS, width=150)
+                                    ui.Label("s", width=10)
+                                    self._seconds = ui.FloatField(width=40)
+                                    self._seconds.model.set_value(20.0)
+                                self._calib_status = ui.Label("", height=18, word_wrap=True, visible=False)
+                                self._lanes_status = ui.Label("", height=18, word_wrap=True, visible=False)
+                                with ui.CollapsableFrame("Calibration conditions / lane markings", collapsed=True, height=0):
+                                    with ui.ScrollingFrame(height=140):
+                                        self._calib_log = ui.Label("", word_wrap=True, alignment=ui.Alignment.LEFT_TOP,
+                                                                   style={"font_size": 13})
+                        with ui.HStack(height=30, spacing=4):
+                            ui.Button("Start", clicked_fn=self._start)
+                            self._pause_button = ui.Button("Pause", clicked_fn=self._on_pause)
+                            ui.Button("Restart", clicked_fn=self._on_restart)
+                            ui.Button("Stop", clicked_fn=self._on_stop)
+                            if on_vlm_console is not None:
+                                ui.Button("VLM", width=50, clicked_fn=on_vlm_console, tooltip="VLM Console")
+                            if on_layout is not None:
+                                ui.Button("Layout", width=60, clicked_fn=on_layout,
+                                          tooltip="Presentation layout: windows around the viewport, the rest hidden")
+                        self._status = ui.Label("idle", height=18)
+                        ui.ImageWithProvider(self._provider, height=PREVIEW_HEIGHT, width=ui.Fraction(1),
+                                             fill_policy=ui.IwpFillPolicy.IWP_PRESERVE_ASPECT_FIT,
+                                             alignment=ui.Alignment.LEFT_TOP)
+                        self._vlm = ui.Label("VLM: off (VLM Console)", height=36, word_wrap=True)
+                    ui.Spacer(width=14)        # room for the vertical scrollbar
         self._on_config_changed()
+        self._on_select = on_select
 
     # ------------------------------------------------------------------ selection
 
@@ -128,6 +135,8 @@ class ControlWindow:
 
     def _on_config_changed(self):
         self._update_note()
+        if self._on_select is not None and self.selected_config is not None and not self.video_override:
+            self._on_select(self.selected_config)
 
     def _browse(self):
         from omni.kit.window.filepicker import FilePickerDialog
@@ -158,6 +167,10 @@ class ControlWindow:
         self._update_note()
 
     def _update_note(self):
+        self._fill_note()
+        self._note.visible = bool(self._note.text)
+
+    def _fill_note(self):
         config = self.selected_config
         if config is None:
             self._note.text = "No runnable config in <project>/config"
@@ -191,6 +204,9 @@ class ControlWindow:
                           f"({latest.latency_s:.1f}s): {text}")
         self._vlm.style = {"color": 0xFF4040FF} if latest.accident else {}
 
+    def show_preview(self, name: str):
+        self._status.text = f"ready: {name}  (first frame and scene shown; Start to replay)"
+
     def show_status(self, session: Optional[ReplaySession]):
         if session is None:
             self._status.text = "idle"
@@ -205,9 +221,11 @@ class ControlWindow:
     def show_calibration(self, calib: Optional[AutoCalibration]):
         if calib is None:
             self._calib_status.text = ""
+            self._calib_status.visible = False
             return
         color = {AutoCalibration.RUNNING: 0xFF66DDFF, AutoCalibration.DONE: 0xFF66FF66}.get(calib.state, 0xFF6666FF)
         self._calib_status.text = f"Calibration [{calib.camera_id}] {calib.state}: {calib.progress}"
+        self._calib_status.visible = True
         self._calib_status.style = {"color": color}
         self._calib_lines = calib.lines
         self._calib_log.text = "\n".join(self._calib_lines + self._lanes_lines)
@@ -215,6 +233,7 @@ class ControlWindow:
     def show_lanes(self, job):
         color = {job.RUNNING: 0xFF66DDFF, job.DONE: 0xFF66FF66}.get(job.state, 0xFF6666FF)
         self._lanes_status.text = f"Lane markings {job.state}: {job.progress}"
+        self._lanes_status.visible = True
         self._lanes_status.style = {"color": color}
         self._lanes_lines = job.lines
         self._calib_log.text = "\n".join(self._calib_lines + self._lanes_lines)

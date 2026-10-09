@@ -87,10 +87,10 @@ def hide_main_menu(hidden: bool = True):
         pass
 
 
-def apply_layout(show_vlm: bool = True, presentation: bool = False) -> List[str]:
-    """Dock our windows around the viewport and hide the rest; with `presentation` also a
-    clean viewport and no main menu. Returns the windows that could not be found (not
-    created yet)."""
+def apply_layout(show_vlm: bool = True, clean: bool = True, hide_menu: bool = False) -> List[str]:
+    """Dock our windows around the viewport and hide the rest; `clean`: no statistics,
+    axis or toolbar over the viewport; `hide_menu`: no main menu (presentation).
+    Returns the windows that could not be found (not created yet)."""
     viewport = _window(VIEWPORT)
     tracking, vlm, timeline = (_window(t) for t in OURS)
     missing = [t for t, w in zip((VIEWPORT,) + OURS, (viewport, tracking, vlm, timeline)) if w is None]
@@ -115,8 +115,9 @@ def apply_layout(show_vlm: bool = True, presentation: bool = False) -> List[str]
         if show_vlm:
             vlm.dock_in(timeline if timeline is not None else viewport, ui.DockPosition.RIGHT, 0.42)
     viewport.focus()
-    if presentation:
+    if clean:
         clean_viewport()
+    if hide_menu:
         hide_main_menu(True)
     return missing
 

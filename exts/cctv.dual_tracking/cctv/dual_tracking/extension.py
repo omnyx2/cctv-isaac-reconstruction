@@ -10,8 +10,11 @@ Unattended run of one scenario (snapshots, quit at the end):
         [--/exts/cctv.dual_tracking/autostart_video=<video or frame folder>]  (Browse + Start:
          a video without a config starts on autostart_config's calibration and is calibrated
          in the background, see calibration.py)
-Presentation (presentation.py): --/exts/cctv.dual_tracking/presentation_layout=true docks the
-windows around the viewport and hides the rest (also the "Layout" button); with snapshot_dir
+Startup (run_isaac.bat): --/exts/cctv.dual_tracking/layout=true docks the windows around a
+clean viewport and hides the other panels (also the "Layout" button); default_config=<config>
+is selected and previewed (its scene and first video frame) until Start.
+Presentation (presentation.py): --/exts/cctv.dual_tracking/presentation_layout=true does the
+same and also hides the main menu; with snapshot_dir
 each snapshot also captures the whole app window (*_app.png); record_dir=<folder> captures the
 app window every record_every processed frames and writes <folder>/app_recording.mp4 at the end.
 Use --/app/window/width=1920 --/app/window/height=1080 for slide-sized captures.
@@ -42,6 +45,7 @@ PREVIEW_INTERVAL_S = 0.1     # real-view refresh in the window
 CONSOLE_INTERVAL_S = 0.25    # VLM console refresh
 AUTOSTART_DELAY_UPDATES = 30 # let the app and viewport settle before an autostart
 LAYOUT_DELAY_UPDATES = 20    # the default layout is restored during the first updates
+STARTUP_CAPTURE_UPDATES = 240  # startup_capture: after the layout, preview and first renders
 
 
 class CCTVDualTrackingExtension(omni.ext.IExt):
@@ -79,6 +83,9 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self._quit_on_finish = bool(settings.get(f"{SETTINGS}/quit_on_finish"))
         self._last_console = 0.0
         self._presentation = bool(settings.get(f"{SETTINGS}/presentation_layout"))
+        self._layout = self._presentation or bool(settings.get(f"{SETTINGS}/layout"))
+        self._default_config = settings.get(f"{SETTINGS}/default_config") or ""
+        self._startup_capture = settings.get(f"{SETTINGS}/startup_capture") or ""   # app window png at startup
         record_dir = settings.get(f"{SETTINGS}/record_dir") or ""
         self._record_every = int(settings.get(f"{SETTINGS}/record_every") or 1)
         self.recorder = None
@@ -91,7 +98,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             self.vlm.log_path = self.project_root / "data" / "results" / "vlm" / "extension_log.jsonl"
         self.window = ControlWindow(self.project_root, self.start, self.toggle_pause, self.restart, self.stop,
                                     on_vlm_console=lambda: self.vlm_window.show(),
-                                    on_layout=self.apply_layout)
+                                    on_layout=lambda: self.apply_layout(presentation=self._presentation),
+                                    on_select=self.preview)
         self.vlm_window = VLMWindow(self.vlm, self.project_root, self._current_frame)
         if settings.get(f"{SETTINGS}/vlm_periodic"):
             self.vlm.set_periodic(True)
@@ -215,6 +223,33 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             job.state, job.progress = job.FAILED, "extracted, but nothing in the cache for this scenario"
         self.window.show_lanes(job)
 
+    def preview(self, config_path: Path):
+        """Before Start: the scenario's scene (camera, lane markings) in the viewport and
+        its first video frame in the window. Nothing runs; a running replay is left alone."""
+        from .session import build_stage, first_frame, load_config
+
+        if self.session is not None and self.session.state in (self.session.RUNNING, self.session.PAUSED):
+            return
+        try:
+            config = load_config(Path(config_path), self.project_root)
+            if not (config.get("simulation") or {}).get("lane_markings"):
+                from world.context.lane_cache import load_cached
+                cached = load_cached(config, self.project_root)
+                if cached:
+                    config.setdefault("simulation", {})["lane_markings"] = cached
+            build_stage(config)
+            frame, size = first_frame(config)
+        except Exception as e:
+            carb.log_warn(f"[cctv.dual_tracking] preview of {config_path} failed: {e}")
+            return
+        self._preview_size = size
+        if frame is not None:
+            self.window.show_frame(frame)
+        self.window.show_preview(Path(config_path).stem)
+        if self._layout and size is not None:
+            from .presentation import fit_viewport_resolution
+            fit_viewport_resolution(size)
+
     def toggle_pause(self):
         if self.session is not None:
             self.session.toggle_pause()
@@ -257,25 +292,37 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
     # ------------------------------------------------------------------ app loop
 
     def apply_layout(self, presentation: bool = False):
-        """The windows docked around the viewport, the rest hidden; `presentation`: also
-        a clean viewport, no main menu, the VLM console showing its results."""
-        from .presentation import apply_layout
+        """The windows docked around a clean viewport, the rest hidden, the VLM console
+        showing its results; `presentation`: also the main menu and the scenario
+        settings hidden."""
+        from .presentation import apply_layout, fit_viewport_resolution
 
         self.vlm_window.show()
+        self.vlm_window.presentation()
         if presentation:
-            self.vlm_window.presentation()
             self.window.presentation()
-        missing = apply_layout(presentation=presentation)
-        if presentation and self.session is not None and self.session.size is not None:
-            from .presentation import fit_viewport_resolution
-            fit_viewport_resolution(self.session.size)
+        missing = apply_layout(clean=True, hide_menu=presentation)
+        size = self.session.size if self.session is not None else getattr(self, "_preview_size", None)
+        if size is not None:
+            fit_viewport_resolution(size)
         if missing:
             print(f"[CCTV] layout: not found {missing}")
 
     def _on_update(self, _event):
         self._updates += 1
-        if self._presentation and self._updates in (LAYOUT_DELAY_UPDATES, AUTOSTART_DELAY_UPDATES + 10):
-            self.apply_layout(presentation=True)
+        if self._layout and self._updates in (LAYOUT_DELAY_UPDATES, AUTOSTART_DELAY_UPDATES + 10):
+            self.apply_layout(presentation=self._presentation)
+        if self._startup_capture and self._updates == STARTUP_CAPTURE_UPDATES:
+            from .presentation import capture_app
+            capture_app(Path(self._startup_capture))
+        if self._startup_capture and self._quit_on_finish and self._updates == STARTUP_CAPTURE_UPDATES + 20                 and self.session is None:
+            omni.kit.app.get_app().post_quit()
+        if self._updates == LAYOUT_DELAY_UPDATES + 5 and not self._autostart and self.session is None:
+            if self._default_config:
+                path = Path(self._default_config)
+                self.window.select_config(path if path.is_absolute() else self.project_root / path)
+            if self.window.selected_config is not None:
+                self.preview(self.window.selected_config)
         if self._autostart and self._updates == AUTOSTART_DELAY_UPDATES:
             # Once per process: a re-created extension instance (reload while quitting) must not start again
             carb.settings.get_settings().set(f"{SETTINGS}/autostart_config", "")
