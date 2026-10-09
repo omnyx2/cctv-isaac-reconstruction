@@ -1,0 +1,56 @@
+{
+ "detrac_MVI_20011": {
+  "hash": "d1b57da85051c72c",
+  "objects": 17817,
+  "poses": 17817,
+  "stats": {
+   "dropped_stale_coasting": 28,
+   "dynamics_separations": 97,
+   "dynamics_snaps": 4,
+   "ended_exited": 73,
+   "ended_lost": 13,
+   "ended_reidentified": 28,
+   "ended_retracted": 62,
+   "merged_contained_detections": 90,
+   "raw_overlaps": 949,
+   "separations": 1071,
+   "truncated_measurements": 1277
+  }
+ },
+ "detrac_MVI_40191": {
+  "hash": "ef7a37653be06ada",
+  "objects": 51851,
+  "poses": 51851,
+  "stats": {
+   "dropped_stale_coasting": 26,
+   "dynamics_separations": 21,
+   "dynamics_snaps": 3,
+   "ended_exited": 364,
+   "ended_lost": 16,
+   "ended_reidentified": 26,
+   "ended_retracted": 80,
+   "merged_contained_detections": 79,
+   "raw_overlaps": 61,
+   "separations": 35,
+   "truncated_measurements": 2170
+  }
+ },
+ "tum_r09_s01_south50": {
+  "hash": "24f99965bf197e16",
+  "objects": 76039,
+  "poses": 76039,
+  "stats": {
+   "dropped_stale_coasting": 98,
+   "dynamics_separations": 821,
+   "dynamics_snaps": 490,
+   "ended_exited": 106,
+   "ended_lost": 109,
+   "ended_reidentified": 98,
+   "ended_retracted": 147,
+   "merged_contained_detections": 555,
+   "raw_overlaps": 2308,
+   "separations": 3016,
+   "truncated_measurements": 4902
+  }
+ }
+}
