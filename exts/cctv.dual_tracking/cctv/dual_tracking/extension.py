@@ -10,6 +10,11 @@ Unattended run of one scenario (snapshots, quit at the end):
         [--/exts/cctv.dual_tracking/autostart_video=<video or frame folder>]  (Browse + Start:
          a video without a config starts on autostart_config's calibration and is calibrated
          in the background, see calibration.py)
+Presentation (presentation.py): --/exts/cctv.dual_tracking/presentation_layout=true docks the
+windows around the viewport and hides the rest (also the "Layout" button); with snapshot_dir
+each snapshot also captures the whole app window (*_app.png); record_dir=<folder> captures the
+app window every record_every processed frames and writes <folder>/app_recording.mp4 at the end.
+Use --/app/window/width=1920 --/app/window/height=1080 for slide-sized captures.
 
 Windows: "CCTV Dual Tracking" (scenario/video, replay) and "CCTV VLM Console"
 (VLM connection, model, timing, prompt, tests, statistics, results).
@@ -36,6 +41,7 @@ def get_instance() -> Optional["CCTVDualTrackingExtension"]:
 PREVIEW_INTERVAL_S = 0.1     # real-view refresh in the window
 CONSOLE_INTERVAL_S = 0.25    # VLM console refresh
 AUTOSTART_DELAY_UPDATES = 30 # let the app and viewport settle before an autostart
+LAYOUT_DELAY_UPDATES = 20    # the default layout is restored during the first updates
 
 
 class CCTVDualTrackingExtension(omni.ext.IExt):
@@ -72,12 +78,20 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self._snapshot_every = int(settings.get(f"{SETTINGS}/snapshot_every") or 125)
         self._quit_on_finish = bool(settings.get(f"{SETTINGS}/quit_on_finish"))
         self._last_console = 0.0
+        self._presentation = bool(settings.get(f"{SETTINGS}/presentation_layout"))
+        record_dir = settings.get(f"{SETTINGS}/record_dir") or ""
+        self._record_every = int(settings.get(f"{SETTINGS}/record_every") or 1)
+        self.recorder = None
+        if record_dir:
+            from .presentation import Recorder
+            self.recorder = Recorder(Path(record_dir), self._record_every)
 
         self.vlm = VLMController(self.project_root)
         if settings.get(f"{SETTINGS}/vlm_log"):
             self.vlm.log_path = self.project_root / "data" / "results" / "vlm" / "extension_log.jsonl"
         self.window = ControlWindow(self.project_root, self.start, self.toggle_pause, self.restart, self.stop,
-                                    on_vlm_console=lambda: self.vlm_window.show())
+                                    on_vlm_console=lambda: self.vlm_window.show(),
+                                    on_layout=self.apply_layout)
         self.vlm_window = VLMWindow(self.vlm, self.project_root, self._current_frame)
         if settings.get(f"{SETTINGS}/vlm_periodic"):
             self.vlm.set_periodic(True)
@@ -132,6 +146,9 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self.vlm.apply_config(config.get("vlm") or {})
         if self.session.start() and start_time_s > 0:
             self.session.seek(start_time_s)
+        if self._presentation and self.session.size is not None:
+            from .presentation import fit_viewport_resolution
+            fit_viewport_resolution(self.session.size)
         if calibrating:
             print(f"[CCTV] calibrating {video_override} in the background")
             self.calibration = AutoCalibration(self.project_root, video_override,
@@ -239,8 +256,26 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
 
     # ------------------------------------------------------------------ app loop
 
+    def apply_layout(self, presentation: bool = False):
+        """The windows docked around the viewport, the rest hidden; `presentation`: also
+        a clean viewport, no main menu, the VLM console showing its results."""
+        from .presentation import apply_layout
+
+        self.vlm_window.show()
+        if presentation:
+            self.vlm_window.presentation()
+            self.window.presentation()
+        missing = apply_layout(presentation=presentation)
+        if presentation and self.session is not None and self.session.size is not None:
+            from .presentation import fit_viewport_resolution
+            fit_viewport_resolution(self.session.size)
+        if missing:
+            print(f"[CCTV] layout: not found {missing}")
+
     def _on_update(self, _event):
         self._updates += 1
+        if self._presentation and self._updates in (LAYOUT_DELAY_UPDATES, AUTOSTART_DELAY_UPDATES + 10):
+            self.apply_layout(presentation=True)
         if self._autostart and self._updates == AUTOSTART_DELAY_UPDATES:
             # Once per process: a re-created extension instance (reload while quitting) must not start again
             carb.settings.get_settings().set(f"{SETTINGS}/autostart_config", "")
@@ -267,12 +302,21 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             return
         session.tick()
         self.window.show_status(session)
+        if session.state in (session.FINISHED, session.FAILED) and self.recorder is not None and self.recorder.count:
+            self._finish_recording(session.fps)
         if session.state in (session.FINISHED, session.FAILED) and self._quit_on_finish:
             self._quit_on_finish = False
             print(f"[CCTV] {session.state}, quitting")
             carb.settings.get_settings().set(f"{SETTINGS}/quitting", True)
             self.vlm.set_periodic(False)
             omni.kit.app.get_app().post_quit()
+
+    def _finish_recording(self, fps: float):
+        from .presentation import encode_video
+
+        recorder, self.recorder = self.recorder, None
+        out = encode_video(recorder.folder, fps / recorder.every)
+        print(f"[CCTV] recording: {recorder.count} app frames -> {out}")
 
     def _on_frame(self, session):
         now = time.perf_counter()
@@ -281,6 +325,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             self.window.show_frame(session.real_view)
         if self._snapshot_dir is not None and session.frame_id % self._snapshot_every == 0:
             self._save_snapshot(session)
+        if self.recorder is not None:
+            self.recorder.frame()
 
     def _save_snapshot(self, session):
         import cv2
@@ -292,10 +338,15 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         viewport = get_active_viewport()
         if viewport is not None:
             capture_viewport_to_file(viewport, str(stem) + "_sim.png")
+        from .presentation import capture_app
+        capture_app(Path(str(stem) + "_app.png"))
 
     def on_shutdown(self):
         global _INSTANCE
         _INSTANCE = None
+        if getattr(self, "_presentation", False):
+            from .presentation import restore
+            restore()
         self.stop()
         if getattr(self, "calibration", None) is not None:
             self.calibration.cancel()

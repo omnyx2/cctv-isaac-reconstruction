@@ -50,7 +50,7 @@ class TimelineWindow:
                     ui.Label("VLM-analyze the frame after each jump", width=260)
                     ui.Button("Analyze this frame now", width=180, clicked_fn=self._analyze_now)
                     self._vlm_label = ui.Label("", word_wrap=True)
-                with ui.CollapsableFrame("VLM scan of the whole video (finds accident markers)", height=0):
+                with ui.CollapsableFrame("VLM scan of the whole video (finds accident markers)", height=0, collapsed=True):
                     with ui.VStack(spacing=4, height=0):
                         with ui.HStack(height=24, spacing=6):
                             ui.Label("Step (s)", width=60)

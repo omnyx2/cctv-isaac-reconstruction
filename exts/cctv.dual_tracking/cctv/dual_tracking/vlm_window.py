@@ -31,6 +31,7 @@ class VLMWindow:
         self._shown_version = -1
         self._models = [controller.settings["model"]]
         self._thumb = ui.ByteImageProvider()
+        self._sections = {}
 
         self.window = ui.Window("CCTV VLM Console", width=620, height=900)
         with self.window.frame:
@@ -46,6 +47,16 @@ class VLMWindow:
 
     # ------------------------------------------------------------------ sections
 
+    def _section(self, title: str) -> ui.CollapsableFrame:
+        frame = ui.CollapsableFrame(title, height=0)
+        self._sections[title] = frame
+        return frame
+
+    def presentation(self):
+        """Settings collapsed, status and results open (for screenshots)."""
+        for title, frame in self._sections.items():
+            frame.collapsed = title not in ("Status and timing", "Results")
+
     def _row(self, label: str):
         stack = ui.HStack(height=22, spacing=6)
         with stack:
@@ -53,7 +64,7 @@ class VLMWindow:
         return stack
 
     def _build_connection(self):
-        with ui.CollapsableFrame("Connection", height=0):
+        with self._section("Connection"):
             with ui.VStack(spacing=4, height=0):
                 with self._row("Ollama URL"):
                     self._url = ui.StringField(model=ui.SimpleStringModel(self.c.settings["url"]))
@@ -74,7 +85,7 @@ class VLMWindow:
 
     def _build_run(self):
         s = self.c.settings
-        with ui.CollapsableFrame("Run settings (live)", height=0):
+        with self._section("Run settings (live)"):
             with ui.VStack(spacing=4, height=0):
                 with self._row("Periodic analysis"):
                     self._periodic = ui.CheckBox(model=ui.SimpleBoolModel(self.c.periodic), width=20)
@@ -106,7 +117,7 @@ class VLMWindow:
                     self._log_label = ui.Label("", style={"color": 0xFF999999})
 
     def _build_prompt(self):
-        with ui.CollapsableFrame("Prompt", height=0):
+        with self._section("Prompt"):
             with ui.VStack(spacing=4, height=0):
                 with self._row("Preset"):
                     self._preset = ui.ComboBox(self.presets.index(self.c.prompt_name)
@@ -120,7 +131,7 @@ class VLMWindow:
                 self._prompt_status = ui.Label(f"active: {self.c.prompt_name}", height=18)
 
     def _build_test(self):
-        with ui.CollapsableFrame("Test now", height=0):
+        with self._section("Test now"):
             with ui.VStack(spacing=4, height=0):
                 with ui.HStack(height=26, spacing=6):
                     ui.Button("Analyze current replay frame", clicked_fn=self._analyze_current)
@@ -130,13 +141,13 @@ class VLMWindow:
                                      fill_policy=ui.IwpFillPolicy.IWP_PRESERVE_ASPECT_FIT)
 
     def _build_stats(self):
-        with ui.CollapsableFrame("Status and timing", height=0):
+        with self._section("Status and timing"):
             with ui.VStack(spacing=2, height=0):
                 self._status = ui.Label("", height=18, word_wrap=True)
                 self._stats = ui.Label("", height=36, word_wrap=True)
 
     def _build_results(self):
-        with ui.CollapsableFrame("Results", height=0):
+        with self._section("Results"):
             with ui.VStack(spacing=4, height=0):
                 self._latest = ui.Label("no result yet", height=60, word_wrap=True)
                 ui.Label("Raw answer", height=16)

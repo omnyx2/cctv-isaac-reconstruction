@@ -104,6 +104,7 @@ class ReplaySession:
         self.frame_id = 0
         self.total_frames = 0
         self.fps = 25.0
+        self.size: Optional[tuple] = None              # video (width, height)
         self.objects = 0
         self.real_view: Optional[np.ndarray] = None    # latest frame with tracks drawn (BGR)
         self.last_frame: Optional[np.ndarray] = None   # latest raw frame (BGR), for on-demand VLM analysis
@@ -155,6 +156,7 @@ class ReplaySession:
         if not player.open():
             raise RuntimeError(f"Cannot open video {video['path']}")
         self.fps, size, self.total_frames = player.fps, (player.width, player.height), player.total_frames
+        self.size = size
         player.close()
 
         # Fresh stage with the calibrated CCTV camera
