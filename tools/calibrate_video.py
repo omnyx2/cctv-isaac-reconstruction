@@ -30,6 +30,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from utils.paths import portable  # noqa: E402
 from world.context import GeometryLevel, MarkingCatalog, select  # noqa: E402
 from world.context.lane_metric import LaneMarkingSource  # noqa: E402
 from world.context.sources import LaneVanishingSource, TrafficFlowSource, track_vanishing_point  # noqa: E402
@@ -48,7 +49,7 @@ def config_from_hypothesis(chosen, video_path: str, fps: float, full_size, stabi
     camera = chosen.camera.resized(tuple(full_size))
     template = yaml.safe_load(open(PROJECT_ROOT / "config" / "TEMPLATE.yaml", encoding="utf-8"))
     config = {
-        "video": {"path": Path(video_path).as_posix(), "fps": float(fps)},
+        "video": {"path": portable(video_path), "fps": float(fps)},
         "yolo": {**template["yolo"], "model_path": model, "imgsz": imgsz},
         "simulation": {"vehicle_dynamics": True, "ground_size": 400.0, "camera": camera.simulation_camera(),
                        "lane_lines_x": chosen.lane_lines_x, "lane_markings": chosen.notes.get("markings", [])},

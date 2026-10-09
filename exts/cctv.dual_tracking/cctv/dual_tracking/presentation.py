@@ -9,7 +9,8 @@ axis and toolbar (restored by `restore()`), and the main menu is hidden.
 Captures (`capture_app`): the application window as it is on screen (all windows,
 not only the viewport), through Kit's swapchain capture. `Recorder` writes one such
 capture per processed video frame; `encode_video` turns them into an mp4 at the video's
-frame rate, so the result plays at real speed even if capturing slowed the replay.
+frame rate (H.264 where available), so the result plays at real speed even if
+capturing slowed the replay.
 """
 
 from pathlib import Path
@@ -152,8 +153,9 @@ class Recorder:
 
 
 def encode_video(folder: Path, fps: float, out: Optional[Path] = None) -> Optional[Path]:
-    """mp4 (H.264 if available, else mp4v) from the captures in `folder`."""
+    """mp4 from the captures in `folder`, H.264 where available (utils/video_io.py)."""
     import cv2
+    from utils.video_io import write_video
 
     frames = sorted(Path(folder).glob("app_*.png"))
     if not frames:
@@ -163,14 +165,6 @@ def encode_video(folder: Path, fps: float, out: Optional[Path] = None) -> Option
         return None
     h, w = first.shape[:2]
     out = Path(out) if out else Path(folder) / "app_recording.mp4"
-    writer = None
-    for codec in ("avc1", "mp4v"):
-        writer = cv2.VideoWriter(str(out), cv2.VideoWriter_fourcc(*codec), fps, (w, h))
-        if writer.isOpened():
-            break
-    for f in frames:
-        image = cv2.imread(str(f))
-        if image is not None and image.shape[:2] == (h, w):
-            writer.write(image)
-    writer.release()
-    return out
+    codec = write_video(out, lambda: (cv2.imread(str(f)) for f in frames), fps, (w, h))
+    print(f"[CCTV] recording codec: {codec}")
+    return out if codec else None

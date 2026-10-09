@@ -7,7 +7,7 @@
 # Run:
 #   C:\isaacsim\python.bat main.py --config config/tum_r09_s02_north50.yaml
 
-video: {path: 'D:/datasets/TUMTraf-Accid3nD/accident_scenes/r09_s02_north50/images',
+video: {path: '${DATASETS}/TUMTraf-Accid3nD/accident_scenes/r09_s02_north50/images',
   fps: 25}
 yolo:
   model_path: yolo11s.pt      # TUM labels: recall 0.95, IoU 0.88-0.92, 11 ms at 1280 (yolov8n: 0.45-0.59 at 640)

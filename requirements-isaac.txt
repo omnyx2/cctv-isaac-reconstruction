@@ -1,0 +1,15 @@
+# Packages installed into Isaac Sim's own Python (on top of what Isaac Sim bundles).
+# Windows:  C:\isaacsim\python.bat -m pip install -r requirements-isaac.txt
+# Linux:    $ISAAC_SIM/python.sh -m pip install -r requirements-isaac.txt
+#
+# Do NOT pip install torch / torchvision here: Isaac Sim bundles them
+# (exts/omni.isaac.ml_archive). If that torch does not support the GPU (DGX Spark:
+# check docs/DGX_SPARK.md), run YOLO in its own venv instead (requirements-perception.txt,
+# CCTV_PERCEPTION_PYTHON).
+#
+# Versions as used and tested on the Windows workstation (Isaac Sim 5.1.0, Python 3.11).
+numpy==1.26.0            # Isaac Sim's compiled extensions need numpy 1.x
+opencv-python==4.11.0.86 # matches numpy 1.26
+ultralytics==8.4.174     # YOLO11 + ByteTrack
+lap==0.5.13              # ByteTrack assignment
+PyYAML>=6.0

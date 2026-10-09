@@ -20,7 +20,10 @@ import yaml
 def project_paths(config: dict, project_root: Path) -> dict:
     """Make the project-relative paths of a config absolute (Kit's working directory
     is not the project, and the perception process inherits it)."""
+    from utils.paths import expand
+
     config = {**config, "video": dict(config.get("video", {})), "yolo": dict(config.get("yolo", {}))}
+    config["video"]["path"] = expand(config["video"]["path"])
     video = Path(config["video"]["path"])
     if not video.is_absolute():
         config["video"]["path"] = str(project_root / video)
@@ -60,7 +63,8 @@ def config_for_video(video: str, project_root: Path) -> Optional[Path]:
     for path in runnable_configs(project_root):
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        candidate = Path(data["video"]["path"])
+        from utils.paths import expand
+        candidate = Path(expand(data["video"]["path"]))
         if not candidate.is_absolute():
             candidate = project_root / candidate
         if candidate.resolve() == target:
@@ -68,9 +72,27 @@ def config_for_video(video: str, project_root: Path) -> Optional[Path]:
     return None
 
 
+PERCEPTION_PYTHON_ENV = "CCTV_PERCEPTION_PYTHON"
+
+
+def external_perception_python() -> Optional[str]:
+    """An interpreter of its own for YOLO (perception process, background tools), from
+    the environment variable CCTV_PERCEPTION_PYTHON — e.g. a venv with a PyTorch built
+    for the GPU when Isaac Sim's bundled torch lacks it (DGX Spark: aarch64, sm_121;
+    see docs/DGX_SPARK.md). It brings its own packages."""
+    import os
+
+    python = os.environ.get(PERCEPTION_PYTHON_ENV, "").strip()
+    return python or None
+
+
 def perception_python() -> Optional[str]:
-    """Python interpreter for the perception process. Inside Kit sys.executable is the
-    Kit binary; the bundled interpreter sits in sys.prefix."""
+    """Python interpreter for the perception process: CCTV_PERCEPTION_PYTHON if set,
+    otherwise Isaac Sim's (inside Kit sys.executable is the Kit binary; the bundled
+    interpreter sits in sys.prefix)."""
+    external = external_perception_python()
+    if external:
+        return external
     if Path(sys.executable).stem.lower().startswith("python"):
         return None
     candidate = Path(sys.prefix) / ("python.exe" if sys.platform == "win32" else "bin/python3")
@@ -80,8 +102,12 @@ def perception_python() -> Optional[str]:
 def perception_import_paths(modules=("torch", "ultralytics", "cv2", "numpy", "yaml")) -> List[str]:
     """Directories the perception process needs on its path: where this Kit process
     finds the packages (extension pip archives such as omni.isaac.ml_archive's torch
-    are importable here but are not on a freshly started interpreter's path)."""
+    are importable here but are not on a freshly started interpreter's path). None
+    for an external interpreter: mixing Kit's packages into it would defeat it."""
     import importlib.util
+
+    if external_perception_python():
+        return []
 
     paths = []
     for name in modules:

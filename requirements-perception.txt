@@ -1,0 +1,15 @@
+# A separate Python for YOLO (perception process and background tools), used when
+# Isaac Sim's bundled torch cannot drive the GPU - e.g. DGX Spark (aarch64, GB10 sm_121).
+# Point the project at it with:  export CCTV_PERCEPTION_PYTHON=$HOME/cctv-perception/bin/python
+#
+#   python3 -m venv ~/cctv-perception
+#   ~/cctv-perception/bin/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+#   ~/cctv-perception/bin/pip install -r requirements-perception.txt
+#
+# PyTorch >= 2.9 ships CUDA 13 (cu130) wheels for Linux aarch64. They list sm_120 as the
+# newest target; sm_120 and sm_121 (GB10) are binary compatible, the warning can be ignored.
+numpy>=1.26,<3
+opencv-python>=4.11
+ultralytics==8.4.174
+lap>=0.5.13
+PyYAML>=6.0

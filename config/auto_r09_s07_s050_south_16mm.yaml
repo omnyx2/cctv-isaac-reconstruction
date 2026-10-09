@@ -4,7 +4,7 @@
 #   [ok] stored_calibrations >= 1: stored_calibrations = 1
 #   [ok] view unchanged: lane vanishing point moved 1.0 px (tolerance 6) vs r09_s09
 
-video: {path: 'D:/datasets/TUMTraf-Accid3nD/data/r09_s07/images/s050_camera_basler_south_16mm',
+video: {path: '${DATASETS}/TUMTraf-Accid3nD/data/r09_s07/images/s050_camera_basler_south_16mm',
   fps: 4.37}
 yolo:
   model_path: yolo11s.pt

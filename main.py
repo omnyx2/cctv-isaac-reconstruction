@@ -85,7 +85,8 @@ class CCTVDualTracker:
         """Open the video, start Isaac Sim and build the world model."""
         print("Initializing CCTV Dual Tracker...")
 
-        video_path = self.config["video"]["path"]
+        from utils.paths import expand
+        self.config["video"]["path"] = video_path = expand(self.config["video"]["path"])
         if not Path(video_path).exists():
             print(f"Video not found: {video_path}")
             return False

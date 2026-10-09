@@ -35,6 +35,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from utils.paths import datasets_root, portable  # noqa: E402
 from world.geometry import homography_from_points  # noqa: E402
 from world.context import GeometryLevel, MarkingCatalog, select  # noqa: E402
 from world.context import lane_markings as rg  # noqa: E402
@@ -45,7 +46,7 @@ from world.context.sources import LaneVanishingSource, TrafficFlowSource, lane_e
 
 CACHE = PROJECT_ROOT / "data" / "cache"
 OUT = PROJECT_ROOT / "data" / "results" / "auto_calib"
-TUM_ROOT = Path("D:/datasets/TUMTraf-Accid3nD/data")
+TUM_ROOT = datasets_root() / "TUMTraf-Accid3nD" / "data"
 SAMPLES = 80          # frames for the background
 
 
@@ -153,7 +154,7 @@ def write_config(name: str, chosen, video, catalog_standards, rejected: bool = F
     camera = chosen.camera.resized(tuple(full_size))
     template = yaml.safe_load(open(PROJECT_ROOT / "config" / "TEMPLATE.yaml", encoding="utf-8"))
     config = {
-        "video": {"path": Path(path).as_posix(), "fps": fps},
+        "video": {"path": portable(path), "fps": fps},
         "yolo": {**template["yolo"], "model_path": "yolo11s.pt", "imgsz": 1280},   # TECHNICAL_NOTES 19.6
         "simulation": {"vehicle_dynamics": True, "ground_size": 400.0, "camera": camera.simulation_camera(),
                        "lane_lines_x": chosen.lane_lines_x,

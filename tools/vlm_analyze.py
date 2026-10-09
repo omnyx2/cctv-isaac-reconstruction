@@ -19,6 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from perception.video_player import VideoPlayer  # noqa: E402
+from utils.paths import expand  # noqa: E402
 from perception.vlm.analyzer import VLMAnalyzer  # noqa: E402
 from perception.vlm.client import create_client  # noqa: E402
 from perception.vlm.prompts import SCENE_PROMPT  # noqa: E402
@@ -38,7 +39,7 @@ def main():
     vlm = dict(config.get("vlm") or {})
     if args.model:
         vlm["model"] = args.model
-    video = args.video or config.get("video", {}).get("path")
+    video = expand(args.video or config.get("video", {}).get("path"))
     fps = args.fps or config.get("video", {}).get("fps")
     if not video:
         parser.error("give --video or a --config with video.path")

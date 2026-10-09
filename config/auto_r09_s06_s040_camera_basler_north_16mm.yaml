@@ -1,5 +1,5 @@
 # Automatic calibration (lane_markings, METRIC)
-# video D:\datasets\TUMTraf-Accid3nD\data\r09_s06\images\s040_camera_basler_north_16mm
+# video ${DATASETS}/TUMTraf-Accid3nD\data\r09_s06\images\s040_camera_basler_north_16mm
 # focal 2578 px, height 7.91 m, pitch 13.65 deg
 # conditions:
 #   [ok] lane_inliers >= 10: lane_inliers = 40
@@ -12,7 +12,7 @@
 #   [ok] standard_margin >= 0.25: standard_margin = 0.3182
 #   [ok] car box widths plausible: median car box width 2.25 m (400 boxes)
 
-video: {path: 'D:/datasets/TUMTraf-Accid3nD/data/r09_s06/images/s040_camera_basler_north_16mm',
+video: {path: '${DATASETS}/TUMTraf-Accid3nD/data/r09_s06/images/s040_camera_basler_north_16mm',
   fps: 25.0}
 yolo:
   model_path: yolo11s.pt

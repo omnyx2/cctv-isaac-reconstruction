@@ -28,7 +28,7 @@ import numpy as np
 import yaml
 
 PROJECT = Path(__file__).resolve().parent.parent
-TUM = Path("D:/datasets/TUMTraf-Accid3nD/data")
+TUM = None    # set in main(): <datasets>/TUMTraf-Accid3nD/data (utils/paths.py)
 VEH = {"CAR", "VAN", "TRUCK", "BUS", "TRAILER", "EMERGENCY_VEHICLE"}
 # (sequence, camera, config) with a yolo11s 1280 detection cache (tools/auto_calibrate.py --native-detections)
 TUM_CAMERAS = [
@@ -148,6 +148,11 @@ def main():
     parser.add_argument("--code", default=str(PROJECT), help="checkout whose world/ and config/ are evaluated")
     args = parser.parse_args()
     code = Path(args.code).resolve()
+    global TUM
+    sys.path.insert(0, str(PROJECT))
+    from utils.paths import datasets_root
+    TUM = datasets_root() / "TUMTraf-Accid3nD" / "data"
+    sys.path.remove(str(PROJECT))
     sys.path.insert(0, str(code))
     from world.pipeline import WorldPipeline
     from world.world_tracker import Detection

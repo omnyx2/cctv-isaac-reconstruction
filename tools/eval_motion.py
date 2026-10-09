@@ -29,6 +29,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from utils.paths import expand  # noqa: E402
 from world.pipeline import WorldPipeline  # noqa: E402
 from world.scene_consistency import count_overlaps  # noqa: E402
 from world.world_tracker import Detection  # noqa: E402
@@ -40,7 +41,7 @@ def compute_frame_transforms(config, frames):
     from perception.video_player import VideoPlayer
     from perception.stabilizer import CameraStabilizer
 
-    player = VideoPlayer(str(PROJECT_ROOT / config["video"]["path"]), fps=config["video"].get("fps"))
+    player = VideoPlayer(str(PROJECT_ROOT / expand(config["video"]["path"])), fps=config["video"].get("fps"))
     player.open()
     stabilizer = CameraStabilizer()
     transforms = [stabilizer.estimate(f.frame, [box for _, box, _ in detections]).copy()
@@ -67,7 +68,7 @@ def load_detections(config, cache_path: Path):
     from perception.video_player import VideoPlayer
     from perception.yolo_tracker import YOLOTracker
 
-    player = VideoPlayer(str(PROJECT_ROOT / config["video"]["path"]), fps=config["video"].get("fps"))
+    player = VideoPlayer(str(PROJECT_ROOT / expand(config["video"]["path"])), fps=config["video"].get("fps"))
     player.open()
     tracker = YOLOTracker(**config["yolo"])
     tracker.load_model()

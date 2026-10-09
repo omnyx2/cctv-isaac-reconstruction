@@ -62,6 +62,8 @@ def main():
     if args.video:
         video.clear()
         video["path"] = args.video
+    from utils.paths import expand
+    video["path"] = expand(video["path"])
     if not Path(video["path"]).is_absolute():
         video["path"] = str(PROJECT_ROOT / video["path"])
     H = homography_from_config(config)

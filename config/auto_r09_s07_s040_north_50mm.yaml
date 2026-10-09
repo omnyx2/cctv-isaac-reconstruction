@@ -11,7 +11,7 @@
 #   [ok] standard_margin >= 0.25: standard_margin = 1
 #   [ok] car box widths plausible: median car box width 2.14 m (400 boxes)
 
-video: {path: 'D:/datasets/TUMTraf-Accid3nD/data/r09_s07/images/s040_camera_basler_north_50mm',
+video: {path: '${DATASETS}/TUMTraf-Accid3nD/data/r09_s07/images/s040_camera_basler_north_50mm',
   fps: 25.0}
 yolo:
   model_path: yolo11s.pt

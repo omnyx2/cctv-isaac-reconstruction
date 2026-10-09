@@ -33,6 +33,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from utils.paths import portable  # noqa: E402
 from analysis import tum_accid3nd as tum  # noqa: E402
 
 ACCIDENTS = PROJECT_ROOT / "config" / "tum_accid3nd_accidents.yaml"
@@ -114,7 +115,7 @@ def write_config(path: Path, seq: str, cam: str, scene_dir: Path, accident: dict
               f"# X right, Y along the road away from the camera, Z up, origin on the road below the image center.\n"
               f"#\n# Run:\n#   C:\\isaacsim\\python.bat main.py --config {path.relative_to(PROJECT_ROOT).as_posix()}\n\n")
     config = {
-        "video": {"path": (scene_dir / "images").as_posix(), "fps": 25},
+        "video": {"path": portable(scene_dir / "images"), "fps": 25},
         "yolo": template["yolo"],
         "simulation": {"vehicle_dynamics": True, "ground_size": 400.0, "camera": camera, "lane_lines_x": []},
         "mapping": {"calibration_points": points},
