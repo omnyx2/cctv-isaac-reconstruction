@@ -33,7 +33,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.paths import portable  # noqa: E402
+from cctv_utils.paths import portable  # noqa: E402
 from analysis import tum_accid3nd as tum  # noqa: E402
 
 ACCIDENTS = PROJECT_ROOT / "config" / "tum_accid3nd_accidents.yaml"

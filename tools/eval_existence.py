@@ -28,7 +28,7 @@ import numpy as np
 import yaml
 
 PROJECT = Path(__file__).resolve().parent.parent
-TUM = None    # set in main(): <datasets>/TUMTraf-Accid3nD/data (utils/paths.py)
+TUM = None    # set in main(): <datasets>/TUMTraf-Accid3nD/data (cctv_utils/paths.py)
 VEH = {"CAR", "VAN", "TRUCK", "BUS", "TRAILER", "EMERGENCY_VEHICLE"}
 # (sequence, camera, config) with a yolo11s 1280 detection cache (tools/auto_calibrate.py --native-detections)
 TUM_CAMERAS = [
@@ -150,7 +150,7 @@ def main():
     code = Path(args.code).resolve()
     global TUM
     sys.path.insert(0, str(PROJECT))
-    from utils.paths import datasets_root
+    from cctv_utils.paths import datasets_root
     TUM = datasets_root() / "TUMTraf-Accid3nD" / "data"
     sys.path.remove(str(PROJECT))
     sys.path.insert(0, str(code))

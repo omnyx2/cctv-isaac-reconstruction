@@ -24,7 +24,7 @@ CACHE_DIR = Path("data") / "cache" / "lanes"
 
 
 def cache_key(config: dict) -> str:
-    from utils.paths import expand
+    from cctv_utils.paths import expand
     video = Path(expand((config.get("video") or {}).get("path", ""))).as_posix().lower()
     points = (config.get("mapping") or {}).get("calibration_points") or []
     digest = hashlib.sha1(json.dumps([video, points], sort_keys=True).encode()).hexdigest()[:12]

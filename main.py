@@ -34,7 +34,7 @@ from perception.vlm import SceneAnalysis, VLMAnalyzer, create_analyzer
 from perception.yolo_tracker import YOLOTracker
 from simulation.scene_manager import SceneManager
 from simulation.vehicle_controller import VehicleController
-from utils.profiler import FpsMeter, StageTimer
+from cctv_utils.profiler import FpsMeter, StageTimer
 from world.pipeline import WorldPipeline
 from world.vehicle_dynamics import DrivenPose
 from world.world_tracker import Detection
@@ -85,7 +85,7 @@ class CCTVDualTracker:
         """Open the video, start Isaac Sim and build the world model."""
         print("Initializing CCTV Dual Tracker...")
 
-        from utils.paths import expand
+        from cctv_utils.paths import expand
         self.config["video"]["path"] = video_path = expand(self.config["video"]["path"])
         if not Path(video_path).exists():
             print(f"Video not found: {video_path}")

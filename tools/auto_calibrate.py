@@ -35,7 +35,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.paths import datasets_root, portable  # noqa: E402
+from cctv_utils.paths import datasets_root, portable  # noqa: E402
 from world.geometry import homography_from_points  # noqa: E402
 from world.context import GeometryLevel, MarkingCatalog, select  # noqa: E402
 from world.context import lane_markings as rg  # noqa: E402

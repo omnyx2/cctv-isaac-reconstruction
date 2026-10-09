@@ -73,7 +73,7 @@ def main():
 
     try:
         import numpy as np
-        from utils.video_io import H264, write_video
+        from cctv_utils.video_io import H264, write_video
         out = ROOT / "data" / "_check_env.mp4"
         out.parent.mkdir(parents=True, exist_ok=True)
         codec = write_video(out, lambda: (np.full((64, 64, 3), i * 8, np.uint8) for i in range(10)), 25, (64, 64))
@@ -83,9 +83,9 @@ def main():
     except Exception as e:
         check("mp4 writer", False, str(e))
 
-    from utils.paths import datasets_root
+    from cctv_utils.paths import datasets_root
     root = datasets_root()
-    check("datasets root", root.exists(), str(root), "set CCTV_DATASETS (utils/paths.py)")
+    check("datasets root", root.exists(), str(root), "set CCTV_DATASETS (cctv_utils/paths.py)")
     check("TUMTraf-Accid3nD", (root / "TUMTraf-Accid3nD").exists(), str(root / "TUMTraf-Accid3nD"))
     check("data/cache", (ROOT / "data" / "cache").exists(), "detection caches and lane caches (not in git)",
           "copy data/ from the workstation, or let the tools rebuild it")

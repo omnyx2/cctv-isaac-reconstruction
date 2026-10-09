@@ -30,7 +30,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.paths import portable  # noqa: E402
+from cctv_utils.paths import portable  # noqa: E402
 from world.context import GeometryLevel, MarkingCatalog, select  # noqa: E402
 from world.context.lane_metric import LaneMarkingSource  # noqa: E402
 from world.context.sources import LaneVanishingSource, TrafficFlowSource, track_vanishing_point  # noqa: E402

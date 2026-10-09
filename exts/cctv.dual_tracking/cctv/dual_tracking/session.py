@@ -20,7 +20,7 @@ import yaml
 def project_paths(config: dict, project_root: Path) -> dict:
     """Make the project-relative paths of a config absolute (Kit's working directory
     is not the project, and the perception process inherits it)."""
-    from utils.paths import expand
+    from cctv_utils.paths import expand
 
     config = {**config, "video": dict(config.get("video", {})), "yolo": dict(config.get("yolo", {}))}
     config["video"]["path"] = expand(config["video"]["path"])
@@ -63,7 +63,7 @@ def config_for_video(video: str, project_root: Path) -> Optional[Path]:
     for path in runnable_configs(project_root):
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        from utils.paths import expand
+        from cctv_utils.paths import expand
         candidate = Path(expand(data["video"]["path"]))
         if not candidate.is_absolute():
             candidate = project_root / candidate

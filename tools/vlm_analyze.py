@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from perception.video_player import VideoPlayer  # noqa: E402
-from utils.paths import expand  # noqa: E402
+from cctv_utils.paths import expand  # noqa: E402
 from perception.vlm.analyzer import VLMAnalyzer  # noqa: E402
 from perception.vlm.client import create_client  # noqa: E402
 from perception.vlm.prompts import SCENE_PROMPT  # noqa: E402

@@ -29,7 +29,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.paths import expand  # noqa: E402
+from cctv_utils.paths import expand  # noqa: E402
 from world.pipeline import WorldPipeline  # noqa: E402
 from world.scene_consistency import count_overlaps  # noqa: E402
 from world.world_tracker import Detection  # noqa: E402

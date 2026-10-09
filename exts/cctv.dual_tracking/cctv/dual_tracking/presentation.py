@@ -153,9 +153,9 @@ class Recorder:
 
 
 def encode_video(folder: Path, fps: float, out: Optional[Path] = None) -> Optional[Path]:
-    """mp4 from the captures in `folder`, H.264 where available (utils/video_io.py)."""
+    """mp4 from the captures in `folder`, H.264 where available (cctv_utils/video_io.py)."""
     import cv2
-    from utils.video_io import write_video
+    from cctv_utils.video_io import write_video
 
     frames = sorted(Path(folder).glob("app_*.png"))
     if not frames:
