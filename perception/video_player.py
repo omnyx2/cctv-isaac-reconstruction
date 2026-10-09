@@ -124,13 +124,19 @@ class VideoPlayer:
             fps=self.fps
         )
 
-    def seek(self, frame_id: int) -> bool:
-        """Seek to a specific frame."""
-        if not self._is_open or self.cap is None:
+    def seek(self, frame_index: int) -> bool:
+        """Make the next read return the frame with 0-based index `frame_index`
+        (its FrameData.frame_id is frame_index + 1, timestamps stay absolute)."""
+        if not self._is_open:
             return False
-
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
-        self.current_frame = frame_id
+        frame_index = max(0, min(int(frame_index), max(self.total_frames - 1, 0)))
+        if self._images is not None:
+            self.current_frame = frame_index
+            return True
+        if self.cap is None:
+            return False
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+        self.current_frame = frame_index
         return True
 
     def seek_ms(self, timestamp_ms: float) -> bool:

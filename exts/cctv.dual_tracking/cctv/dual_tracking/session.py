@@ -110,6 +110,9 @@ class ReplaySession:
         # Every raw frame goes here (frame, frame_id, video time s): the VLM controller
         self.frame_sink: Optional[Callable[[np.ndarray, int, float], None]] = None
         self.on_restart: Optional[Callable[[], None]] = None
+        self.on_seek: Optional[Callable[[float], None]] = None   # video time s sought to
+        self.speed = 1.0               # playback rate (slow motion < 1)
+        self._step_pending = False     # paused: process exactly one more frame
 
         self._perception = None
         self._world = None
@@ -181,14 +184,37 @@ class ReplaySession:
             self.state, self._next_due = self.RUNNING, None
 
     def restart(self):
-        if self._perception is None:
-            return
-        self._perception.start()
-        self._world.reset()
-        self._vehicles.clear_all()
+        self.seek(0.0, paused=False)
         if self.on_restart is not None:
             self.on_restart()
-        self.frame_id, self._next_due, self.state = 0, None, self.RUNNING
+
+    @property
+    def duration_s(self) -> float:
+        return self.total_frames / self.fps if self.fps else 0.0
+
+    def seek(self, time_s: float, paused: Optional[bool] = None):
+        """Continue the replay from `time_s` of the video. Tracking and the world model
+        start fresh there (as at a video start). Keeps the paused state unless `paused`
+        is given; when paused, the first frame there is still shown."""
+        if self._perception is None:
+            return
+        index = int(round(max(0.0, min(time_s, self.duration_s)) * self.fps))
+        index = min(index, max(self.total_frames - 1, 0))
+        self._perception.start(start_frame=index)
+        self._world.reset()
+        self._vehicles.clear_all()
+        if paused is None:
+            paused = self.state == self.PAUSED
+        self.state = self.PAUSED if paused else self.RUNNING
+        self._step_pending = paused
+        self._next_due, self.message = None, ""
+        if self.on_seek is not None:
+            self.on_seek(index / self.fps)
+
+    def step(self):
+        """Paused: show the next frame."""
+        if self.state == self.PAUSED:
+            self._step_pending = True
 
     def stop(self):
         if self._perception is not None:
@@ -200,10 +226,13 @@ class ReplaySession:
     # ------------------------------------------------------------------ per app update
 
     def tick(self):
-        if self.state != self.RUNNING or self._perception is None:
+        if self._perception is None:
+            return
+        stepping = self.state == self.PAUSED and self._step_pending
+        if self.state != self.RUNNING and not stepping:
             return
         now = time.perf_counter()
-        if self._next_due is not None and now < self._next_due:
+        if not stepping and self._next_due is not None and now < self._next_due:
             return
         try:
             result = self._perception.poll()
@@ -217,7 +246,11 @@ class ReplaySession:
                 self.log(f"[CCTV] finished: {self.frame_id} frames; world model "
                          + ", ".join(f"{k}={v}" for k, v in sorted(self._world.stats.items())))
             return
-        frame_time = 1.0 / self.fps
+        if stepping:
+            self._step_pending = False
+            self._process(result)
+            return
+        frame_time = 1.0 / (self.fps * max(self.speed, 0.01))
         # Absolute schedule at the video rate; when behind, re-anchor instead of piling up debt
         if self._next_due is None or now > self._next_due + frame_time:
             self._next_due = now

@@ -23,6 +23,13 @@ import omni.ext
 import omni.kit.app
 
 SETTINGS = "/exts/cctv.dual_tracking"
+_INSTANCE = None
+
+
+def get_instance() -> Optional["CCTVDualTrackingExtension"]:
+    """The running extension (for other extensions, e.g. cctv.timeline): `.session`
+    (ReplaySession or None), `.vlm` (VLMController), `.config` (scenario config)."""
+    return _INSTANCE
 PREVIEW_INTERVAL_S = 0.1     # real-view refresh in the window
 CONSOLE_INTERVAL_S = 0.25    # VLM console refresh
 AUTOSTART_DELAY_UPDATES = 30 # let the app and viewport settle before an autostart
@@ -30,6 +37,9 @@ AUTOSTART_DELAY_UPDATES = 30 # let the app and viewport settle before an autosta
 
 class CCTVDualTrackingExtension(omni.ext.IExt):
     def on_startup(self, ext_id: str):
+        global _INSTANCE
+        _INSTANCE = self
+        self.config = None
         settings = carb.settings.get_settings()
         ext_path = Path(omni.kit.app.get_app().get_extension_manager().get_extension_path(ext_id))
         root = settings.get(f"{SETTINGS}/project_root") or ""
@@ -77,8 +87,10 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             carb.log_error(f"[cctv.dual_tracking] cannot load {config_path}: {e}")
             return
         print(f"[CCTV] scenario {config_path.name}" + (f", video {video_override}" if video_override else ""))
+        self.config = config
         self.session = ReplaySession(config)
         self.session.on_frame = self._on_frame
+        self.session.on_seek = lambda _t: self.vlm.reset()
         self.session.frame_sink = self.vlm.submit
         self.session.on_restart = self.vlm.reset
         self.vlm.reset()
@@ -154,6 +166,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             capture_viewport_to_file(viewport, str(stem) + "_sim.png")
 
     def on_shutdown(self):
+        global _INSTANCE
+        _INSTANCE = None
         self.stop()
         self._update_sub = None
         if getattr(self, "vlm", None) is not None:

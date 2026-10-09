@@ -38,7 +38,7 @@ PERCEPTION_THREADS = 4
 
 
 def _process_main(video_path: str, fps, yolo_config: dict, stabilize: bool,
-                  out_queue, stop_event, extra_paths=()):
+                  out_queue, stop_event, extra_paths=(), start_frame: int = 0):
     """Entry point of the perception process."""
     try:
         import sys
@@ -55,6 +55,8 @@ def _process_main(video_path: str, fps, yolo_config: dict, stabilize: bool,
         player = VideoPlayer(video_path, fps=fps)
         if not player.open():
             raise RuntimeError(f"Perception process could not open {video_path}")
+        if start_frame:
+            player.seek(start_frame)
         tracker = YOLOTracker(**yolo_config)
         if not tracker.load_model():
             raise RuntimeError("Perception process could not load the YOLO model")
@@ -112,8 +114,10 @@ class PerceptionWorker:
         self._stop = None
         self.finished = False   # end of video reached (see poll())
 
-    def start(self):
-        """Start (or restart from the first frame) the perception process."""
+    def start(self, start_frame: int = 0):
+        """Start (or restart) the perception process at the 0-based frame index
+        `start_frame` (seeking). Tracking starts fresh there; with stabilization the
+        reference becomes that frame."""
         self.stop()
         self.finished = False
         if self.python_executable:
@@ -123,7 +127,7 @@ class PerceptionWorker:
         self._process = self._ctx.Process(
             target=_process_main, name="perception", daemon=True,
             args=(self.video_path, self.fps, self.yolo_config, self.stabilize, self._queue, self._stop,
-                  self.extra_paths))
+                  self.extra_paths, int(start_frame)))
         self._process.start()
 
     def stop(self):

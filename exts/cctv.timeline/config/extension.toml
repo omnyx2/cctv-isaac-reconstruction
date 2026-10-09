@@ -1,0 +1,20 @@
+[package]
+version = "0.1.0"
+title = "CCTV Timeline"
+description = "Timeline controller for cctv.dual_tracking: seek, step, slow motion, accident markers (annotated contact, VLM detections), VLM scan of the whole video, analyze where you jump."
+category = "Simulation"
+keywords = ["cctv", "timeline", "accident", "vlm"]
+authors = ["hyeonseok"]
+readme = "docs/README.md"
+changelog = "docs/CHANGELOG.md"
+
+[dependencies]
+"cctv.dual_tracking" = {}
+"omni.ui" = {}
+
+[[python.module]]
+name = "cctv.timeline"
+
+[settings]
+exts."cctv.timeline".lead_in_s = 3.0        # jump this many seconds before a marker
+exts."cctv.timeline".scan_step_s = 2.0      # default VLM scan step

@@ -3,9 +3,13 @@
 Owns one VLMAnalyzer (perception/vlm). The replay session offers its frames
 (periodic analysis); the VLM console window changes settings live, analyzes a
 frame or an image file on demand, and reads the history and timing from here.
+A scan analyzes a whole video at a fixed time step in the background (reading the
+frames itself, independent of the replay): its accident answers become the
+timeline markers of cctv.timeline.
 """
 
 import json
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -21,7 +25,7 @@ DEFAULTS = {"backend": "ollama", "url": "http://localhost:11434", "model": "qwen
 
 
 class VLMController:
-    def __init__(self, project_root: Path, log=print, history_size: int = 100):
+    def __init__(self, project_root: Path, log=print, history_size: int = 300):
         from perception.vlm import PRESETS
 
         self.log = log
@@ -39,6 +43,13 @@ class VLMController:
         self.version = 0                 # bumps on every new result (UI refresh)
         self.log_path: Optional[Path] = None
         self.analyzer = None
+        # Whole-video scan (background thread)
+        self.scan_progress = 0.0         # 0..1
+        self.scan_status = ""
+        self._scan_thread: Optional[threading.Thread] = None
+        self._scan_cancel = threading.Event()
+        self._scan_results: list = []
+        self._scan_lock = threading.Lock()
 
     # ------------------------------------------------------------------ backend
 
@@ -128,11 +139,70 @@ class VLMController:
         if self.analyzer is not None:
             self.analyzer.reset()
 
+    # ------------------------------------------------------------------ whole-video scan
+
+    @property
+    def scanning(self) -> bool:
+        return self._scan_thread is not None and self._scan_thread.is_alive()
+
+    def scan(self, video_path: str, fps: float, step_s: float, start_s: float = 0.0,
+             end_s: Optional[float] = None) -> bool:
+        """Analyze the video every `step_s` seconds in the background with the current
+        model and prompt. Results arrive through poll() like any other analysis."""
+        if self.scanning:
+            return False
+        reason = self._client().check()
+        if reason:
+            self.scan_status = f"unavailable: {reason}"
+            return False
+        self._scan_cancel.clear()
+        self.scan_progress, self.scan_status = 0.0, "starting"
+        self._scan_thread = threading.Thread(
+            target=self._scan_run, args=(video_path, fps, step_s, start_s, end_s, self._client(),
+                                         self.prompt, self.prompt_name), name="vlm-scan", daemon=True)
+        self._scan_thread.start()
+        return True
+
+    def cancel_scan(self):
+        self._scan_cancel.set()
+
+    def _scan_run(self, video_path, fps, step_s, start_s, end_s, client, prompt, prompt_name):
+        from perception.video_player import VideoPlayer
+        from perception.vlm import VLMAnalyzer
+
+        player = VideoPlayer(video_path, fps=fps)
+        if not player.open():
+            self.scan_status = f"cannot open {video_path}"
+            return
+        duration = player.total_frames / player.fps
+        end_s = duration if end_s is None else min(end_s, duration)
+        times = list(np.arange(start_s, end_s, max(step_s, 0.1)))
+        analyzer = VLMAnalyzer(client, prompt=prompt, prompt_name=f"{prompt_name}/scan")
+        try:
+            for i, t in enumerate(times):
+                if self._scan_cancel.is_set():
+                    self.scan_status = f"cancelled at {t:.1f}s"
+                    return
+                player.seek(int(round(t * player.fps)))
+                frame = player.read_frame()
+                if frame is None:
+                    break
+                self.scan_status = f"analyzing {t:.1f}s ({i + 1}/{len(times)})"
+                result = analyzer.analyze_now(frame.frame, frame.frame_id, frame.timestamp_ms / 1000.0)
+                with self._scan_lock:
+                    self._scan_results.append(result)
+                self.scan_progress = (i + 1) / len(times)
+            self.scan_status = f"done: {len(times)} frames every {step_s:g}s"
+        finally:
+            player.close()
+
+    # ------------------------------------------------------------------ results
+
     def poll(self) -> list:
         """Collect finished analyses (call every app update)."""
-        if self.analyzer is None:
-            return []
-        results = self.analyzer.poll()
+        results = self.analyzer.poll() if self.analyzer is not None else []
+        with self._scan_lock:
+            results, self._scan_results = results + self._scan_results, []
         for result in results:
             self.history.appendleft(result)
             self.version += 1
@@ -151,6 +221,10 @@ class VLMController:
     def latest(self):
         return self.history[0] if self.history else None
 
+    def accident_times(self) -> list:
+        """Video times (s) of analyses that reported an accident, oldest first."""
+        return sorted({round(r.video_time_s, 2) for r in self.history if r.accident and not r.error})
+
     def stats_text(self) -> str:
         if self.analyzer is None:
             return "not running"
@@ -163,6 +237,7 @@ class VLMController:
                 f"{'BUSY' if t['busy'] else 'idle'}{' +1 waiting' if t['pending'] else ''}")
 
     def shutdown(self):
+        self.cancel_scan()
         if self.analyzer is not None:
             self.analyzer.stop()
             self.analyzer = None

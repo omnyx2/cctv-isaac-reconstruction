@@ -28,10 +28,13 @@ C:\isaacsim\python.bat main.py --config config/detrac_MVI_40191.yaml
 ### Isaac Sim 확장 (영상을 골라서 실행)
 
 ```
-C:\isaacsim\isaac-sim.bat --ext-folder exts --enable cctv.dual_tracking
+C:\isaacsim\isaac-sim.bat --ext-folder exts --enable cctv.dual_tracking --enable cctv.timeline
 ```
 **CCTV Dual Tracking** 창에서 시나리오나 영상(파일 또는 프레임 폴더)을 골라 Start를 누르면 뷰포트에서 재구성이 돈다
 ([exts/cctv.dual_tracking/docs/README.md](exts/cctv.dual_tracking/docs/README.md)).
+**CCTV VLM Console**에서 VLM 모델·주기·프롬프트를 바꾸고 결과와 처리 시간을 본다.
+**CCTV Timeline**에서 사고 마커(주석 접촉 시각, VLM 판정)를 눌러 그 몇 초 앞으로 이동하고, 슬로모션·한 프레임씩 넘기기, 영상 전체 VLM 스캔을 한다
+([exts/cctv.timeline/docs/README.md](exts/cctv.timeline/docs/README.md)).
 
 ### VLM 장면 분석 (선택)
 
