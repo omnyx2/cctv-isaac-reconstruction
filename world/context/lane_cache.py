@@ -33,11 +33,17 @@ def cache_path(config: dict, project_root: Path) -> Path:
     return Path(project_root) / CACHE_DIR / f"{cache_key(config)}.json"
 
 
-def load_cached(config: dict, project_root: Path) -> Optional[List[dict]]:
+def load_record(config: dict, project_root: Path) -> Optional[dict]:
+    """The cache record: markings, reviewed (by a VLM, lane_review.py), review."""
     path = cache_path(config, project_root)
     if not path.exists():
         return None
-    return json.loads(path.read_text(encoding="utf-8")).get("markings")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_cached(config: dict, project_root: Path) -> Optional[List[dict]]:
+    record = load_record(config, project_root)
+    return None if record is None else record.get("markings")
 
 
 def homography_from_config(config: dict) -> Optional[np.ndarray]:

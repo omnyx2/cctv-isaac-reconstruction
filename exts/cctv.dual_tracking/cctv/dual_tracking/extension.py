@@ -61,6 +61,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self._calibration_applied = False
         self.lanes_job = None
         self._lanes_request = None
+        self._lanes_source = None
+        self._lanes_reviewed = False
         self._last_preview = 0.0
         self._updates = 0
         self._autostart = settings.get(f"{SETTINGS}/autostart_config") or ""
@@ -105,14 +107,21 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             return
         print(f"[CCTV] scenario {config_path.name}" + (f", video {video_override}" if video_override else ""))
         calibrating = bool(calibrate and video_override)
-        need_lanes = not (config.get("simulation") or {}).get("lane_markings")
-        if need_lanes:
-            from world.context.lane_cache import load_cached
-            cached = load_cached(config, self.project_root)
-            if cached:
-                config.setdefault("simulation", {})["lane_markings"] = cached
-                need_lanes = False
-                print(f"[CCTV] lane markings: {len(cached)} pieces from the cache")
+        # Lane markings: a VLM-reviewed extraction (cache) > the config's own > an
+        # unreviewed extraction (cache) > extract now; unreviewed ones are reviewed as
+        # soon as the VLM is on (_poll_lanes)
+        from world.context.lane_cache import load_record
+        record = load_record(config, self.project_root)
+        has_own = bool((config.get("simulation") or {}).get("lane_markings"))
+        need_lanes = False
+        self._lanes_reviewed = False
+        if record and record.get("markings") and (record.get("reviewed") or not has_own):
+            config.setdefault("simulation", {})["lane_markings"] = record["markings"]
+            self._lanes_reviewed = bool(record.get("reviewed"))
+            print(f"[CCTV] lane markings: {len(record['markings'])} pieces from the cache"
+                  + (" (VLM-reviewed)" if self._lanes_reviewed else ""))
+        elif not has_own:
+            need_lanes = True
         self.config = config
         self.session = ReplaySession(config)
         self.session.on_frame = self._on_frame
@@ -130,6 +139,7 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
                                                standards=self.window.standards)
             self._calibration_applied = False
         self._lanes_request = (config_path, video_override) if need_lanes else None
+        self._lanes_source = (config_path, video_override)
         if need_lanes and not calibrating:   # a calibration brings its own markings
             self._start_lanes()
 
@@ -141,9 +151,17 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             return
         config_path, video = self._lanes_request
         self._lanes_request = None
-        print(f"[CCTV] extracting lane markings of {video or config_path.name} in the background")
+        review = self._vlm_on()
+        print(f"[CCTV] extracting lane markings of {video or config_path.name} in the background"
+              + (f" (VLM review: {self.vlm.settings['model']})" if review else ""))
         self.lanes_job = LaneExtraction(self.project_root, config_path, video,
-                                        seconds=self.window.calibration_seconds)
+                                        seconds=self.window.calibration_seconds,
+                                        vlm_url=self.vlm.settings["url"] if review else None,
+                                        vlm_model=self.vlm.settings["model"])
+
+    def _vlm_on(self) -> bool:
+        analyzer = self.vlm.analyzer
+        return analyzer is not None and analyzer.running
 
     def _cancel_lanes(self):
         if self.lanes_job is not None:
@@ -153,6 +171,15 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
 
     def _poll_lanes(self):
         job = self.lanes_job
+        session = self.session
+        if (job is None and not self._lanes_reviewed and self._lanes_source is not None and self._vlm_on()
+                and self.calibration is None and session is not None
+                and session.state in (session.RUNNING, session.PAUSED)):
+            # The VLM is on and the scene's markings were not reviewed: extract and review
+            self._lanes_reviewed = True          # once per scenario start
+            self._lanes_request = self._lanes_source
+            self._start_lanes()
+            job = self.lanes_job
         if job is None:
             return
         self.window.show_lanes(job)
@@ -163,8 +190,10 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self.lanes_job = None
         markings = load_cached(self.config, self.project_root)
         if markings and self.session.set_lane_markings(markings):
-            print(f"[CCTV] lane markings: {len(markings)} pieces drawn")
-            job.progress = f"{len(markings)} pieces drawn"
+            print(f"[CCTV] lane markings: {len(markings)} pieces drawn"
+                  + (" (VLM-reviewed)" if job.reviewed else ""))
+            job.progress = f"{len(markings)} pieces drawn" + (" (VLM-reviewed)" if job.reviewed else "")
+            self._lanes_reviewed = self._lanes_reviewed or job.reviewed
         else:
             job.state, job.progress = job.FAILED, "extracted, but nothing in the cache for this scenario"
         self.window.show_lanes(job)

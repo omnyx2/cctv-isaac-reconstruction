@@ -339,25 +339,22 @@ CHAIN_LATERAL_PX = 4.0       # blobs within this lateral distance of one line th
 CHAIN_MIN_BLOBS = 3          # a dashed line: at least this many collinear blobs
 
 
-def dash_chains(background: np.ndarray, lanes: LaneLines, road: Optional[np.ndarray] = None,
-                catalog: Optional[MarkingCatalog] = None) -> Tuple[np.ndarray, List[str]]:
-    """Marking pieces too short to pass the elongation test on their own — far dashes,
-    foreshortened by a long lens — accepted when at least CHAIN_MIN_BLOBS of them (or
-    they and a detected segment) line up on one line through the lane vanishing point:
-    a dashed lane line. Each becomes a segment along that line. For drawing the scene
-    only; the calibration uses the strict segments (lane_lines)."""
-    empty = (np.zeros((0, 4), np.float32), [])
-    if lanes.vanishing_point is None:
-        return empty
-    vx, vy = lanes.vanishing_point
+def vp_blobs(background: np.ndarray, vanishing_point: Tuple[float, float], exclude: Optional[np.ndarray] = None,
+             road: Optional[np.ndarray] = None, catalog: Optional[MarkingCatalog] = None):
+    """Paint blobs below the vanishing point that are longer towards it than across
+    (whatever their elongation), each as (angle about the VP, distance to it, segment
+    along the direction to it); and the paint masks. `exclude`: pixels to leave out
+    (markings found already)."""
+    vx, vy = vanishing_point
     masks = paint_masks(background, road, catalog)
     union = np.zeros(background.shape[:2], bool)
     for m in masks.values():
         union |= m
-    union &= lanes.mask == 0
+    if exclude is not None:
+        union &= exclude == 0
     lum = cv2.cvtColor(background, cv2.COLOR_BGR2LAB)[..., 0]
     count, labels, stats, centroids = cv2.connectedComponentsWithStats(union.astype(np.uint8) * 255, connectivity=8)
-    blobs = []                                    # (angle, distance, segment)
+    blobs = []
     for i in range(1, count):
         x, y, bw, bh, area = stats[i]
         cx, cy = centroids[i]
@@ -375,13 +372,33 @@ def dash_chains(background: np.ndarray, lanes: LaneLines, road: Optional[np.ndar
         t0, t1 = along.min() - 0.5, along.max() + 0.5
         blobs.append((float(np.arctan2(cx - vx, cy - vy)), float(d),
                       [cx + u[0] * t0, cy + u[1] * t0, cx + u[0] * t1, cy + u[1] * t1]))
+    return blobs, masks
+
+
+def polar(segments: np.ndarray, vanishing_point: Tuple[float, float]) -> Tuple[np.ndarray, np.ndarray]:
+    """(angle about the VP, distance to it) of each segment's midpoint."""
+    vx, vy = vanishing_point
+    segments = np.asarray(segments, np.float64).reshape(-1, 4)
+    cx, cy = (segments[:, 0] + segments[:, 2]) / 2, (segments[:, 1] + segments[:, 3]) / 2
+    return np.arctan2(cx - vx, cy - vy), np.hypot(cx - vx, cy - vy)
+
+
+def dash_chains(background: np.ndarray, lanes: LaneLines, road: Optional[np.ndarray] = None,
+                catalog: Optional[MarkingCatalog] = None) -> Tuple[np.ndarray, List[str]]:
+    """Marking pieces too short to pass the elongation test on their own — far dashes,
+    foreshortened by a long lens — accepted when at least CHAIN_MIN_BLOBS of them (or
+    they and a detected segment) line up on one line through the lane vanishing point:
+    a dashed lane line. Each becomes a segment along that line. For drawing the scene
+    only; the calibration uses the strict segments (lane_lines)."""
+    empty = (np.zeros((0, 4), np.float32), [])
+    if lanes.vanishing_point is None:
+        return empty
+    blobs, masks = vp_blobs(background, lanes.vanishing_point, lanes.mask, road, catalog)
     if not blobs:
         return empty
-    anchors = []                                  # detected segments: (angle, distance)
-    for x1, y1, x2, y2 in lanes.segments:
-        cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
-        if cy > vy + 5:
-            anchors.append((float(np.arctan2(cx - vx, cy - vy)), float(np.hypot(cx - vx, cy - vy))))
+    vy = lanes.vanishing_point[1]
+    below = lanes.segments[(lanes.segments[:, 1] + lanes.segments[:, 3]) / 2 > vy + 5] if len(lanes.segments) else []
+    anchors = list(zip(*polar(below, lanes.vanishing_point))) if len(below) else []
     angles = np.array([b[0] for b in blobs])
     dists = np.array([b[1] for b in blobs])
     segments = []
@@ -394,12 +411,17 @@ def dash_chains(background: np.ndarray, lanes: LaneLines, road: Optional[np.ndar
     return segments, segment_paints(segments, masks)
 
 
+def scene_segments(background: np.ndarray, lanes: LaneLines, road: Optional[np.ndarray] = None,
+                   catalog: Optional[MarkingCatalog] = None) -> LaneLines:
+    """The detected segments and the dash chains (dash_chains) together."""
+    extra, paints = dash_chains(background, lanes, road, catalog)
+    return LaneLines(lanes.mask, np.vstack([lanes.segments.reshape(-1, 4), extra]).astype(np.float32),
+                     lanes.vanishing_point,
+                     paints=list(lanes.paints or ["white"] * len(lanes.segments)) + list(paints))
+
+
 def scene_markings(image_to_road: np.ndarray, background: np.ndarray, lanes: LaneLines, horizon_y: float,
                    road: Optional[np.ndarray] = None, catalog: Optional[MarkingCatalog] = None) -> List[dict]:
     """The marking layout for the simulation scene: the detected segments and the
-    dash chains (dash_chains), on the road in meters (markings_on_road)."""
-    extra, paints = dash_chains(background, lanes, road, catalog)
-    both = LaneLines(lanes.mask, np.vstack([lanes.segments.reshape(-1, 4), extra]).astype(np.float32),
-                     lanes.vanishing_point,
-                     paints=list(lanes.paints or ["white"] * len(lanes.segments)) + list(paints))
-    return markings_on_road(image_to_road, both, horizon_y)
+    dash chains, on the road in meters (markings_on_road)."""
+    return markings_on_road(image_to_road, scene_segments(background, lanes, road, catalog), horizon_y)

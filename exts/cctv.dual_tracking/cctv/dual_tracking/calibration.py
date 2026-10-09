@@ -14,7 +14,8 @@ the same camera reuses it while the view is unchanged.
 
 LaneExtraction (tools/extract_lanes.py): the marking pieces of the video projected with
 the scenario's own homography, cached in data/cache/lanes/ (world/context/lane_cache.py);
-the extension then draws them into the running scene.
+the extension then draws them into the running scene. While the VLM is on, the lines
+are reviewed by it first (world/context/lane_review.py).
 """
 
 import os
@@ -133,9 +134,13 @@ class LaneExtraction(BackgroundTool):
     PREFIX = "lanes"
     NOT_FOUND = "no lane markings found"
 
-    def __init__(self, project_root: Path, config_path: Path, video: Optional[str] = None, seconds: float = 20.0):
+    def __init__(self, project_root: Path, config_path: Path, video: Optional[str] = None, seconds: float = 20.0,
+                 vlm_url: Optional[str] = None, vlm_model: Optional[str] = None):
         self.config_path = Path(config_path)
+        self.reviewed = bool(vlm_url)
         args = ["--config", self.config_path, "--seconds", seconds]
         if video:
             args += ["--video", video]
+        if vlm_url:
+            args += ["--vlm-url", vlm_url, "--vlm-model", vlm_model or "qwen2.5vl:7b"]
         super().__init__(project_root, "extract_lanes.py", args)
