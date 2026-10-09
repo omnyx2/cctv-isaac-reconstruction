@@ -20,12 +20,26 @@ class FrameData:
     fps: float
 
 
+def fps_from_names(images) -> Optional[float]:
+    """Capture rate from file names "<seconds>_<nanoseconds>_..." (median interval), or None."""
+    times = []
+    for path in images[:200]:
+        parts = path.stem.split("_")
+        if len(parts) < 2 or not (parts[0].isdigit() and parts[1].isdigit()):
+            return None
+        times.append(int(parts[0]) + int(parts[1]) / 10 ** len(parts[1]))
+    dt = np.diff(times)
+    dt = dt[dt > 0]
+    return float(round(1.0 / np.median(dt), 2)) if len(dt) else None
+
+
 class VideoPlayer:
     """
     Plays a video file, or the image frames of a directory in name order.
 
     For a directory, `fps` (the original capture rate) is required since images
-    carry no timing. For a video file the container's frame rate is used and `fps`
+    carry no timing, unless the file names start with a capture time
+    "<seconds>_<nanoseconds>_..." (TUMTraf), from which it is read. For a video file the container's frame rate is used and `fps`
     is only a fallback when the container has none.
     """
 
@@ -67,13 +81,16 @@ class VideoPlayer:
         return True
 
     def _open_image_directory(self) -> bool:
-        if not self._fps_override:
-            print(f"An image directory needs the capture fps: {self.video_path}")
-            return False
         images = sorted(p for pattern in self.IMAGE_PATTERNS for p in self.video_path.glob(pattern))
         if not images:
             print(f"No image frames in {self.video_path}")
             return False
+        if not self._fps_override:
+            fps = fps_from_names(images)
+            if fps is None:
+                print(f"An image directory needs the capture fps: {self.video_path}")
+                return False
+            self.fps = fps
         first = cv2.imread(str(images[0]))
         if first is None:
             print(f"Failed to read {images[0]}")

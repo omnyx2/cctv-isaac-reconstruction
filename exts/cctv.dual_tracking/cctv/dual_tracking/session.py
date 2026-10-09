@@ -34,7 +34,9 @@ def load_config(config_path: Path, project_root: Path, video_override: Optional[
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
     if video_override:
-        config["video"]["path"] = video_override
+        # The borrowed config's frame rate belongs to its own video: the player reads
+        # the new one's (container, or frame-name timestamps)
+        config["video"] = {"path": video_override}
     return project_paths(config, project_root)
 
 

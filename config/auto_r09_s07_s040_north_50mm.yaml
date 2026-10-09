@@ -1,0 +1,166 @@
+# Automatic calibration (lane_markings, METRIC) by tools/auto_calibrate.py
+# road standard DE_autobahn, focal 8014 px, height 8.26 m, pitch 3.88 deg
+# conditions:
+#   [ok] lane_inliers >= 10: lane_inliers = 60
+#   [ok] lane_boundaries >= 3: lane_boundaries = 14
+#   [ok] dash_periods >= 4: dash_periods = 27
+#   [ok] 3 <= hfov_deg <= 120: hfov_deg = 13.66
+#   [ok] 3 <= height_m <= 50: height_m = 8.26
+#   [ok] lane_width_cv <= 0.2: lane_width_cv = 0.1333
+#   [ok] standard_support >= 0.5: standard_support = 1
+#   [ok] standard_margin >= 0.25: standard_margin = 1
+#   [ok] car box widths plausible: median car box width 2.14 m (400 boxes)
+
+video: {path: 'D:/datasets/TUMTraf-Accid3nD/data/r09_s07/images/s040_camera_basler_north_50mm',
+  fps: 25.0}
+yolo:
+  model_path: yolo11s.pt
+  confidence: 0.25
+  classes: [0, 2, 5, 7]
+  tracker_config: bytetrack.yaml
+  imgsz: 1280
+simulation:
+  vehicle_dynamics: true
+  ground_size: 400.0
+  camera:
+    position: [0.0, 0.0, 8.26]
+    pitch_deg: 3.878
+    yaw_deg: -3.171
+    focal_px: 8014.2
+    image_size: [1920, 1200]
+  lane_lines_x: [-0.072, 3.748, 7.414, 16.833, 17.748, 20.408, 24.087, 28.002, 32.246,
+    39.152, 45.549, 54.747, 64.569, 1575.976]
+  lane_markings:
+  - p:
+    - [16.984, 187.7]
+    - [16.856, 174.224]
+    paint: white
+  - p:
+    - [20.482, 186.961]
+    - [20.463, 180.55]
+    paint: white
+  - p:
+    - [31.693, 187.828]
+    - [31.793, 181.136]
+    paint: white
+  - p:
+    - [24.011, 185.786]
+    - [23.993, 179.649]
+    paint: white
+  - p:
+    - [27.764, 184.221]
+    - [27.748, 178.112]
+    paint: white
+  - p:
+    - [16.811, 173.348]
+    - [16.941, 170.672]
+    paint: white
+  - p:
+    - [16.901, 169.845]
+    - [16.91, 166.152]
+    paint: white
+  - p:
+    - [20.353, 168.665]
+    - [20.35, 162.242]
+    paint: white
+  - p:
+    - [23.887, 167.728]
+    - [23.9, 161.27]
+    paint: white
+  - p:
+    - [27.677, 166.746]
+    - [27.655, 160.282]
+    paint: white
+  - p:
+    - [16.881, 165.468]
+    - [16.795, 161.072]
+    paint: white
+  - p:
+    - [16.803, 160.7]
+    - [16.744, 151.826]
+    paint: white
+  - p:
+    - [16.761, 151.565]
+    - [16.676, 139.052]
+    paint: white
+  - p:
+    - [20.264, 150.483]
+    - [20.281, 144.224]
+    paint: white
+  - p:
+    - [23.823, 149.698]
+    - [23.827, 143.543]
+    paint: white
+  - p:
+    - [7.604, 147.132]
+    - [7.596, 141.047]
+    paint: white
+  - p:
+    - [16.759, 139.293]
+    - [17.307, 104.76]
+    paint: white
+  - p:
+    - [20.153, 132.659]
+    - [20.178, 126.529]
+    paint: white
+  - p:
+    - [7.504, 129.87]
+    - [7.519, 123.513]
+    paint: white
+  - p:
+    - [3.859, 127.863]
+    - [3.899, 121.892]
+    paint: white
+  - p:
+    - [20.111, 115.059]
+    - [20.155, 114.102]
+    paint: white
+  - p:
+    - [7.426, 112.654]
+    - [7.437, 106.501]
+    paint: white
+  - p:
+    - [3.79, 111.119]
+    - [3.78, 105.017]
+    paint: white
+  - p:
+    - [7.402, 95.796]
+    - [7.395, 89.368]
+    paint: white
+  - p:
+    - [3.717, 94.254]
+    - [3.713, 87.965]
+    paint: white
+  - p:
+    - [7.329, 78.352]
+    - [7.323, 72.238]
+    paint: white
+  - p:
+    - [-0.086, 78.164]
+    - [-0.059, 76.328]
+    paint: white
+  - p:
+    - [3.629, 77.014]
+    - [3.629, 71.125]
+    paint: white
+  - p:
+    - [7.283, 61.395]
+    - [7.312, 57.115]
+    paint: white
+mapping:
+  source: auto:lane_markings
+  calibration_points:
+  - - [576.0, 1104.0]
+    - [0.451, 63.012]
+  - - [1344.0, 1104.0]
+    - [6.513, 62.676]
+  - - [672.0, 780.0]
+    - [1.764, 91.429]
+  - - [1248.0, 780.0]
+    - [8.347, 91.065]
+context:
+  allowed_standards: [DE_autobahn]
+stabilization: {enabled: false}
+display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
+vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'qwen2.5vl:7b',
+  interval_s: 4.0, max_side: 1344, timeout_s: 60.0}

@@ -7,6 +7,9 @@ Unattended run of one scenario (snapshots, quit at the end):
         --/exts/cctv.dual_tracking/autostart_config=config/tum_r09_s01_south50.yaml
         --/exts/cctv.dual_tracking/snapshot_dir=C:/tmp/snaps --/exts/cctv.dual_tracking/quit_on_finish=true
         [--/exts/cctv.dual_tracking/vlm_periodic=true --/exts/cctv.dual_tracking/vlm_log=true]
+        [--/exts/cctv.dual_tracking/autostart_video=<video or frame folder>]  (Browse + Start:
+         a video without a config starts on autostart_config's calibration and is calibrated
+         in the background, see calibration.py)
 
 Windows: "CCTV Dual Tracking" (scenario/video, replay) and "CCTV VLM Console"
 (VLM connection, model, timing, prompt, tests, statistics, results).
@@ -54,9 +57,12 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         from .window import ControlWindow
 
         self.session = None
+        self.calibration = None
+        self._calibration_applied = False
         self._last_preview = 0.0
         self._updates = 0
         self._autostart = settings.get(f"{SETTINGS}/autostart_config") or ""
+        self._autostart_video = settings.get(f"{SETTINGS}/autostart_video") or ""
         snapshot_dir = settings.get(f"{SETTINGS}/snapshot_dir") or ""
         self._snapshot_dir = Path(snapshot_dir) if snapshot_dir else None
         self._snapshot_every = int(settings.get(f"{SETTINGS}/snapshot_every") or 125)
@@ -76,10 +82,18 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
 
     # ------------------------------------------------------------------ controls
 
-    def start(self, config_path: Path, video_override: Optional[str] = None):
+    def start(self, config_path: Path, video_override: Optional[str] = None, calibrate: bool = False,
+              start_time_s: float = 0.0):
+        """Replay `config_path` (or its calibration on `video_override`). With `calibrate`,
+        the video is calibrated in the background meanwhile; once a METRIC config is
+        written the replay switches to it at the same video time (_poll_calibration)."""
+        from .calibration import AutoCalibration
         from .session import ReplaySession, load_config
 
         self.stop()
+        if self.calibration is not None:
+            self.calibration.cancel()
+            self.calibration = None
         config_path = config_path if config_path.is_absolute() else self.project_root / config_path
         try:
             config = load_config(config_path, self.project_root, video_override)
@@ -95,7 +109,14 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self.session.on_restart = self.vlm.reset
         self.vlm.reset()
         self.vlm.apply_config(config.get("vlm") or {})
-        self.session.start()
+        if self.session.start() and start_time_s > 0:
+            self.session.seek(start_time_s)
+        if calibrate and video_override:
+            print(f"[CCTV] calibrating {video_override} in the background")
+            self.calibration = AutoCalibration(self.project_root, video_override,
+                                               seconds=self.window.calibration_seconds,
+                                               standards=self.window.standards)
+            self._calibration_applied = False
 
     def toggle_pause(self):
         if self.session is not None:
@@ -108,6 +129,25 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
     def stop(self):
         if self.session is not None:
             self.session.stop()
+
+    def _poll_calibration(self):
+        calib = self.calibration
+        if calib is None:
+            return
+        self.window.show_calibration(calib)
+        if calib.state != calib.DONE or self._calibration_applied:
+            return
+        self._calibration_applied = True
+        session = self.session
+        resume_at = session.last_time_s if session is not None else 0.0
+        paused = session is not None and session.state == session.PAUSED
+        print(f"[CCTV] calibration done: switching to {calib.config_path.name} at {resume_at:.1f} s")
+        self.window.adopt_video_config(calib.config_path)
+        keep, self.calibration = calib, None          # start() must not cancel it
+        self.start(calib.config_path, start_time_s=resume_at)
+        self.calibration, self._calibration_applied = keep, True
+        if paused and self.session is not None:
+            self.session.toggle_pause()
 
     def _current_frame(self):
         session = self.session
@@ -126,8 +166,13 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
                 return
             path = Path(self._autostart)
             self.window.select_config(path if path.is_absolute() else self.project_root / path)
-            self.start(path)
+            if self._autostart_video:      # as if the video was picked with Browse, then Start
+                self.window._set_video(self._autostart_video)
+                self.window._start()
+            else:
+                self.start(path)
         self.vlm.poll()
+        self._poll_calibration()
         now = time.perf_counter()
         if now - self._last_console >= CONSOLE_INTERVAL_S:
             self._last_console = now
@@ -169,6 +214,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         global _INSTANCE
         _INSTANCE = None
         self.stop()
+        if getattr(self, "calibration", None) is not None:
+            self.calibration.cancel()
         self._update_sub = None
         if getattr(self, "vlm", None) is not None:
             self.vlm.shutdown()

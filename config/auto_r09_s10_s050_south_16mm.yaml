@@ -1,0 +1,275 @@
+# Automatic calibration (stored_camera:r09_s09, METRIC) by tools/auto_calibrate.py
+# road standard None, focal 2616 px, height 8.50 m, pitch 13.64 deg
+# conditions:
+#   [ok] stored_calibrations >= 1: stored_calibrations = 2
+#   [ok] view unchanged: lane vanishing point moved 0.9 px (tolerance 6) vs r09_s09
+
+video: {path: 'D:/datasets/TUMTraf-Accid3nD/data/r09_s10/images/s050_camera_basler_south_16mm',
+  fps: 4.37}
+yolo:
+  model_path: yolo11s.pt
+  confidence: 0.25
+  classes: [0, 2, 5, 7]
+  tracker_config: bytetrack.yaml
+  imgsz: 1280
+simulation:
+  vehicle_dynamics: true
+  ground_size: 400.0
+  camera:
+    position: [0.0, 0.0, 8.505]
+    pitch_deg: 13.641
+    yaw_deg: -0.48
+    focal_px: 2616.0
+    image_size: [1920, 1200]
+  lane_lines_x: [-28.172, -26.269, -24.319, -22.081, -18.12, -14.509, -11.054, -7.455,
+    -2.133, 1.662, 5.273, 9.289, 13.039, 16.863]
+  lane_markings:
+  - p:
+    - [-22.005, 150.496]
+    - [-21.961, 144.836]
+    paint: white
+  - p:
+    - [-22.157, 139.603]
+    - [-22.613, 62.59]
+    paint: white
+  - p:
+    - [-11.123, 132.055]
+    - [-11.026, 124.764]
+    paint: white
+  - p:
+    - [-14.581, 129.164]
+    - [-14.495, 123.701]
+    paint: white
+  - p:
+    - [-2.125, 115.914]
+    - [-2.14, 124.689]
+    paint: white
+  - p:
+    - [9.315, 123.374]
+    - [9.401, 118.073]
+    paint: white
+  - p:
+    - [-11.072, 113.198]
+    - [-11.058, 107.273]
+    paint: white
+  - p:
+    - [-14.544, 111.438]
+    - [-14.529, 105.769]
+    paint: white
+  - p:
+    - [9.275, 110.807]
+    - [9.399, 105.827]
+    paint: white
+  - p:
+    - [-23.41, 103.724]
+    - [-24.607, 98.713]
+    paint: white
+  - p:
+    - [9.333, 98.99]
+    - [9.345, 92.951]
+    paint: white
+  - p:
+    - [1.666, 97.886]
+    - [1.659, 91.446]
+    paint: white
+  - p:
+    - [-25.188, 97.129]
+    - [-25.919, 93.901]
+    paint: white
+  - p:
+    - [5.35, 96.874]
+    - [5.336, 91.319]
+    paint: white
+  - p:
+    - [-11.084, 95.221]
+    - [-11.077, 88.769]
+    paint: white
+  - p:
+    - [13.111, 95.02]
+    - [13.105, 90.563]
+    paint: white
+  - p:
+    - [-25.944, 93.703]
+    - [-26.873, 89.894]
+    paint: white
+  - p:
+    - [-24.567, 93.586]
+    - [-24.071, 93.582]
+    paint: white
+  - p:
+    - [-14.575, 93.897]
+    - [-14.527, 87.567]
+    paint: white
+  - p:
+    - [16.92, 92.809]
+    - [16.86, 89.923]
+    paint: white
+  - p:
+    - [-18.173, 92.31]
+    - [-18.138, 86.371]
+    paint: white
+  - p:
+    - [-27.971, 87.454]
+    - [-28.373, 84.26]
+    paint: white
+  - p:
+    - [-27.258, 89.776]
+    - [-26.439, 89.06]
+    paint: white
+  - p:
+    - [16.888, 89.633]
+    - [16.856, 85.928]
+    paint: white
+  - p:
+    - [-27.913, 87.737]
+    - [-26.894, 88.551]
+    paint: white
+  - p:
+    - [-26.468, 87.115]
+    - [-26.071, 87.112]
+    paint: white
+  - p:
+    - [9.315, 87.366]
+    - [9.321, 80.847]
+    paint: white
+  - p:
+    - [16.866, 85.593]
+    - [16.839, 83.227]
+    paint: white
+  - p:
+    - [16.873, 83.009]
+    - [16.752, 45.188]
+    paint: white
+  - p:
+    - [1.666, 79.284]
+    - [1.683, 73.367]
+    paint: white
+  - p:
+    - [5.306, 79.182]
+    - [5.311, 72.987]
+    paint: white
+  - p:
+    - [13.055, 78.118]
+    - [13.046, 72.464]
+    paint: white
+  - p:
+    - [-11.058, 76.973]
+    - [-11.039, 70.769]
+    paint: white
+  - p:
+    - [-14.494, 75.565]
+    - [-14.507, 69.495]
+    paint: white
+  - p:
+    - [-18.088, 74.311]
+    - [-18.117, 68.523]
+    paint: white
+  - p:
+    - [9.253, 75.136]
+    - [9.314, 68.726]
+    paint: white
+  - p:
+    - [9.242, 63.225]
+    - [9.302, 56.541]
+    paint: white
+  - p:
+    - [1.648, 61.289]
+    - [1.63, 54.789]
+    paint: white
+  - p:
+    - [5.272, 60.888]
+    - [5.274, 54.905]
+    paint: white
+  - p:
+    - [13.031, 60.284]
+    - [13.025, 54.188]
+    paint: white
+  - p:
+    - [-11.04, 58.89]
+    - [-11.05, 52.71]
+    paint: white
+  - p:
+    - [-14.512, 58.053]
+    - [-14.489, 51.974]
+    paint: white
+  - p:
+    - [-18.122, 57.03]
+    - [-18.073, 51.011]
+    paint: white
+  - p:
+    - [9.227, 51.106]
+    - [9.246, 44.534]
+    paint: white
+  - p:
+    - [5.226, 42.926]
+    - [5.228, 36.731]
+    paint: white
+  - p:
+    - [12.983, 42.544]
+    - [12.97, 36.399]
+    paint: white
+  - p:
+    - [-7.468, 42.283]
+    - [-7.45, 40.394]
+    paint: white
+  - p:
+    - [-11.024, 40.974]
+    - [-11.019, 34.805]
+    paint: white
+  - p:
+    - [-14.461, 40.283]
+    - [-14.461, 39.441]
+    paint: white
+  - p:
+    - [-7.441, 40.077]
+    - [-7.493, 39.223]
+    paint: white
+  - p:
+    - [-7.455, 38.852]
+    - [-7.475, 36.763]
+    paint: white
+  - p:
+    - [9.183, 39.175]
+    - [9.211, 32.703]
+    paint: white
+  - p:
+    - [-7.459, 35.359]
+    - [-7.464, 32.95]
+    paint: white
+  - p:
+    - [-7.452, 32.723]
+    - [-7.468, 30.653]
+    paint: white
+  - p:
+    - [-7.435, 29.943]
+    - [-7.437, 22.408]
+    paint: white
+  - p:
+    - [9.111, 27.079]
+    - [9.182, 25.482]
+    paint: white
+  - p:
+    - [5.191, 24.931]
+    - [5.179, 18.767]
+    paint: white
+  - p:
+    - [-7.423, 22.261]
+    - [-7.455, 21.384]
+    paint: white
+mapping:
+  source: auto:stored_camera:r09_s09
+  calibration_points:
+  - - [576.0, 1104.0]
+    - [-2.795, 18.646]
+  - - [1344.0, 1104.0]
+    - [3.107, 18.597]
+  - - [672.0, 780.0]
+    - [-2.868, 26.873]
+  - - [1248.0, 780.0]
+    - [3.318, 26.821]
+context:
+  allowed_standards: [DE_autobahn]
+stabilization: {enabled: false}
+display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
+vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'qwen2.5vl:7b',
+  interval_s: 4.0, max_side: 1344, timeout_s: 60.0}

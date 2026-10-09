@@ -16,11 +16,35 @@ The **CCTV Dual Tracking** window:
 | Control | |
 |---|---|
 | Scenario | a calibrated config from `config/` (video + camera calibration) |
-| Browse... | a video file or a folder of frames. If a config uses that video, it is selected; otherwise the video runs with the selected scenario's calibration (geometry is only right for the same camera) |
+| Browse... | a video file or a folder of frames. If a config uses that video, it is selected; otherwise the video starts with the selected scenario's calibration and is calibrated automatically (below) |
+| Auto-calibrate / Road / s | calibrate videos without a config in the background (on by default); the allowed road standard ("any", DE_autobahn, CN_expressway, KR_expressway, KR_urban, US_interstate); seconds of video to perceive |
+| Calibration conditions | progress, and every condition of every calibration source (why one was admitted or rejected) |
 | Start / Pause / Restart / Stop | replay control |
 | Image | the real video with YOLO tracks; the reconstruction is in the viewport (CCTV camera) |
 | VLM | latest vision-language scene analysis (see the VLM Console) |
 | VLM Console | opens the console window below |
+
+## Automatic calibration
+
+Starting a video that has no config runs `tools/calibrate_video.py` in its own process
+(`calibration.py`) while the replay already plays on the borrowed calibration:
+
+1. perceive the first N seconds (yolo11s at 1280 px, ByteTrack, camera motion)
+2. select a calibration: this camera's stored calibration if the view is unchanged
+   (`data/calibrations/<camera id>/`, lane or track vanishing point) -> lane markings
+   (METRIC: dash period and lane width of a road standard, car box widths checked) ->
+   vanishing points (PROJECTIVE, not enough to place vehicles)
+3. METRIC: write `config/auto_<recording>.yaml` (camera, homography, the real lane
+   markings for the USD scene) and store a new lane-marking calibration under the camera id
+
+The extension then selects that config and restarts the replay on it at the same video
+time: the stage is rebuilt with the calibrated camera and lane markings, the world model
+uses the new homography. The video is from then on a scenario of its own. Without a
+METRIC calibration the replay stays on the borrowed one and the window says which
+conditions failed.
+
+A frame folder's frame rate is read from the file names when they carry the capture
+time (`<s>_<ns>_...`, TUMTraf); for video files from the container.
 
 ## VLM Console
 
@@ -53,6 +77,7 @@ Nothing blocks the UI.
 |---|---|---|
 | `project_root` | the project containing `exts/` | |
 | `autostart_config` | "" | config to start right away (project-relative) |
+| `autostart_video` | "" | with `autostart_config`: Browse this video and Start (auto-calibration as in the window) |
 | `snapshot_dir` / `snapshot_every` | "" / 125 | save real view + viewport every N frames |
 | `quit_on_finish` | false | quit Isaac Sim at the end of the video |
 | `vlm_periodic` | false | periodic VLM analysis on from the start |

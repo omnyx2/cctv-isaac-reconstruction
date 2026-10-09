@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import omni.ui as ui
 
+from .calibration import STANDARDS, AutoCalibration
 from .session import ReplaySession, config_for_video, runnable_configs
 
 VIDEO_EXTENSIONS = ("*.mp4", "*.avi", "*.mkv", "*.mov")
@@ -15,7 +16,7 @@ PREVIEW_WIDTH = 640
 
 
 class ControlWindow:
-    def __init__(self, project_root: Path, on_start: Callable[[Path, Optional[str]], None],
+    def __init__(self, project_root: Path, on_start: Callable[[Path, Optional[str], bool], None],
                  on_pause: Callable[[], None], on_restart: Callable[[], None], on_stop: Callable[[], None],
                  on_vlm_console: Optional[Callable[[], None]] = None):
         self.project_root = project_root
@@ -37,6 +38,21 @@ class ControlWindow:
                     ui.Button("Browse...", width=90, clicked_fn=self._browse)
                     ui.Button("Clear", width=60, clicked_fn=self._clear_video)
                 self._note = ui.Label("", height=18, word_wrap=True, style={"color": 0xFF88CCFF})
+                with ui.HStack(height=22, spacing=6):
+                    self._auto = ui.CheckBox(width=20)
+                    self._auto.model.set_value(True)
+                    self._auto.model.add_value_changed_fn(lambda *_: self._update_note())
+                    ui.Label("Auto-calibrate videos without a config", width=250)
+                    ui.Label("Road", width=34)
+                    self._standard = ui.ComboBox(0, "any", *STANDARDS)
+                    ui.Label("s", width=10)
+                    self._seconds = ui.FloatField(width=40)
+                    self._seconds.model.set_value(20.0)
+                self._calib_status = ui.Label("", height=18, word_wrap=True)
+                with ui.CollapsableFrame("Calibration conditions", collapsed=True, height=0):
+                    with ui.ScrollingFrame(height=140):
+                        self._calib_log = ui.Label("", word_wrap=True, alignment=ui.Alignment.LEFT_TOP,
+                                                   style={"font_size": 13})
                 with ui.HStack(height=30, spacing=4):
                     ui.Button("Start", clicked_fn=self._start)
                     self._pause_button = ui.Button("Pause", clicked_fn=self._on_pause)
@@ -57,6 +73,38 @@ class ControlWindow:
         if not self.configs:
             return None
         return self.configs[self._combo.model.get_item_value_model().as_int]
+
+    def reload_configs(self):
+        """Re-read <project>/config (after an automatic calibration wrote a new one)."""
+        current = self.selected_config
+        self.configs = runnable_configs(self.project_root)
+        model = self._combo.model
+        for item in list(model.get_item_children()):
+            model.remove_item(item)
+        for c in self.configs:
+            model.append_child_item(None, ui.SimpleStringModel(c.stem))
+        if current is not None:
+            self.select_config(current)
+
+    @property
+    def auto_calibrate(self) -> bool:
+        return self._auto.model.get_value_as_bool()
+
+    @property
+    def standards(self) -> List[str]:
+        i = self._standard.model.get_item_value_model().as_int
+        return [] if i == 0 else [STANDARDS[i - 1]]
+
+    @property
+    def calibration_seconds(self) -> float:
+        return max(5.0, self._seconds.model.get_value_as_float())
+
+    def adopt_video_config(self, config: Path):
+        """The current video now has its own config: select it, drop the override."""
+        self.reload_configs()
+        self.select_config(config)
+        self.video_override = None
+        self._update_note()
 
     def select_config(self, path: Path):
         path = Path(path).resolve()
@@ -103,15 +151,17 @@ class ControlWindow:
             self._note.text = "No runnable config in <project>/config"
             return
         if self.video_override:
-            self._note.text = (f"No config for this video: using the calibration of '{config.stem}'. "
-                               "Make a config with tools/calibrate_camera.py for correct geometry.")
+            self._note.text = (f"No config for this video: starts with the calibration of '{config.stem}'"
+                               + (", calibrates in the background and switches over."
+                                  if self.auto_calibrate else " (geometry will be wrong)."))
         else:
             self._video_field.model.set_value("(video of the selected config)")
             self._note.text = ""
 
     def _start(self):
         if self.selected_config is not None:
-            self._on_start(self.selected_config, self.video_override)
+            self._on_start(self.selected_config, self.video_override,
+                           bool(self.video_override) and self.auto_calibrate)
 
     # ------------------------------------------------------------------ display
 
@@ -135,6 +185,15 @@ class ControlWindow:
             text += f" | {session.message}"
         self._status.text = text
         self._pause_button.text = "Resume" if session.state == ReplaySession.PAUSED else "Pause"
+
+    def show_calibration(self, calib: Optional[AutoCalibration]):
+        if calib is None:
+            self._calib_status.text = ""
+            return
+        color = {AutoCalibration.RUNNING: 0xFF66DDFF, AutoCalibration.DONE: 0xFF66FF66}.get(calib.state, 0xFF6666FF)
+        self._calib_status.text = f"Calibration [{calib.camera_id}] {calib.state}: {calib.progress}"
+        self._calib_status.style = {"color": color}
+        self._calib_log.text = "\n".join(calib.lines)
 
     def show_frame(self, bgr: np.ndarray):
         h, w = bgr.shape[:2]
