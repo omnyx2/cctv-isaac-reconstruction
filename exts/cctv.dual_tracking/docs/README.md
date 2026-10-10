@@ -62,8 +62,13 @@ sides and than the asphalt, with asphalt and traffic beside it - drawn on the st
 centre with its width, projected with the homography the world model places the
 vehicles with. When done they replace the straight lane lines in the running scene.
 They are cached per video and calibration in `data/cache/lanes/` (main.py uses the
-cache too), so the next start draws them right away. Known limit: a sunlit guard rail
-can pass as paint.
+cache too), so the next start draws them right away.
+
+Known limit, not solvable with these cues: in sunshine the top of a guard rail is a
+bright stripe on asphalt-like ground with traffic passing in front of it in the image -
+brightness, width, asphalt beside it and traffic beside it all read as paint (TUM s03
+north 50). It can be drawn as a solid line. Only height would tell (a rail is ~0.75 m
+above the road), and one fixed camera does not see height.
 
 ## VLM Console
 

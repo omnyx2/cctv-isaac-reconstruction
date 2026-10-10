@@ -26,7 +26,8 @@ lines and other patterns, e.g. block markings) and the solid lines, where they a
 stripe brighter than both its sides in the background and clearly brighter than the
 asphalt (white paint; a guard rail is a stripe too, but metal grey), asphalt on at least
 one side and traffic next to it (paint lies on the road; a sunlit rail is bright, but
-not on asphalt). A solid line is cut at MAX_RANGE_M.
+not on asphalt). A solid line is cut at MAX_RANGE_M. Not solvable with these cues: a sunlit guard rail
+(bright, on asphalt-like ground, traffic passing in front of it) reads as paint.
 
 Writes into --out: calibration.json (the automaton's camera at the end; with the
 label-fitted TUM camera as reference when the folder is named r09_sNN_<camera>),
