@@ -1,7 +1,6 @@
 # Scene dynamic logic calibration (calibrated, 5 agreeing estimates)
 # focal 8278 px, height 8.48 m, pitch 4.52 deg; 54 lane markings
 # video D:\datasets\TUMTraf-Accid3nD\data\r09_s09\images\s050_camera_basler_south_50mm
-09_s09imagess050_camera_basler_south_50mm
 
 video: {path: '${DATASETS}/TUMTraf-Accid3nD/data/r09_s09/images/s050_camera_basler_south_50mm',
   fps: 25.0}

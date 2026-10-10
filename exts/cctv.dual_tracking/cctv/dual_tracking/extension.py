@@ -144,19 +144,25 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             return
         print(f"[CCTV] scenario {config_path.name}" + (f", video {video_override}" if video_override else ""))
         calibrating = bool(calibrate and video_override)
-        # Lane markings: a VLM-reviewed extraction (cache) > the config's own > an
-        # unreviewed extraction (cache) > extract now; unreviewed ones are reviewed as
-        # soon as the VLM is on (_poll_lanes)
+        # Lane markings: a final extraction (cache: scene logic, or VLM-reviewed) > the
+        # config's own > an unreviewed extraction (cache) > extract now (scene logic with
+        # the scenario's camera); an older unreviewed one is reviewed once the VLM is on
         from world.context.lane_cache import load_record
         record = load_record(config, self.project_root)
         has_own = bool((config.get("simulation") or {}).get("lane_markings"))
         need_lanes = False
         self._lanes_reviewed = False
-        if record and record.get("markings") and (record.get("reviewed") or not has_own):
+        # scene-logic markings (the paint checked by the tool) are final: no VLM review
+        scene_logic = (config.get("mapping") or {}).get("source") == "auto:scene_logic"
+        final = bool(record and (record.get("reviewed") or record.get("method") == "scene_logic"))
+        if record and record.get("markings") and (final or not has_own) and not scene_logic:
             config.setdefault("simulation", {})["lane_markings"] = record["markings"]
-            self._lanes_reviewed = bool(record.get("reviewed"))
+            self._lanes_reviewed = final
             print(f"[CCTV] lane markings: {len(record['markings'])} pieces from the cache"
-                  + (" (VLM-reviewed)" if self._lanes_reviewed else ""))
+                  + (" (scene logic)" if record.get("method") == "scene_logic" else
+                     " (VLM-reviewed)" if record.get("reviewed") else ""))
+        elif scene_logic and has_own:
+            self._lanes_reviewed = True            # the calibration's own paint
         elif not has_own:
             need_lanes = True
         self.config = config
@@ -231,8 +237,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         markings = load_cached(self.config, self.project_root)
         if markings and self.session.set_lane_markings(markings):
             print(f"[CCTV] lane markings: {len(markings)} pieces drawn"
-                  + (" (VLM-reviewed)" if job.reviewed else ""))
-            job.progress = f"{len(markings)} pieces drawn" + (" (VLM-reviewed)" if job.reviewed else "")
+                  + " (scene logic)")
+            job.progress = f"{len(markings)} pieces drawn (scene logic)"
             self._lanes_reviewed = self._lanes_reviewed or job.reviewed
         else:
             job.state, job.progress = job.FAILED, "extracted, but nothing in the cache for this scenario"

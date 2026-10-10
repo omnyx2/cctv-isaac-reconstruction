@@ -12,10 +12,12 @@ tool has written config/auto_<recording>.yaml - one camera for the Isaac scene a
 world model, and the lane markings read from the static edges - which the extension
 then switches the replay to.
 
-LaneExtraction (tools/extract_lanes.py): the marking pieces of the video projected with
-the scenario's own homography, cached in data/cache/lanes/ (world/context/lane_cache.py);
-the extension then draws them into the running scene. While the VLM is on, the lines
-are reviewed by it first (world/context/lane_review.py).
+LaneExtraction (tools/scene_calibration.py --camera-config): for a scenario calibrated
+otherwise (by hand, or earlier), the scene dynamic logic with the scenario's own camera:
+the paint read from its static map, projected with the homography the world model
+places the vehicles with, cached in data/cache/lanes/ (world/context/lane_cache.py,
+method "scene_logic"); the extension then draws them into the running scene. The paint
+is checked by the tool itself (stripe, asphalt, traffic), so no VLM review follows.
 """
 
 import os
@@ -120,7 +122,7 @@ class AutoCalibration(BackgroundTool):
         self.camera_id = camera_id_for(video)
         self.config_path = Path(project_root) / "config" / f"auto_{video_key(video)}.yaml"
         out = Path(project_root) / "data" / "results" / "scene_logic" / video_key(video)
-        args = ["--video", video, "--seconds", seconds, "--out", out, "--config", self.config_path,
+        args = ["--video", video, "--seconds", seconds, "--out", out, "--config", self.config_path, "--allow-tentative",
                 "--log-prefix", self.PREFIX, "--standard", *(standards or ["any"])]
         super().__init__(project_root, "scene_calibration.py", args)
 
@@ -132,13 +134,12 @@ class LaneExtraction(BackgroundTool):
     PREFIX = "lanes"
     NOT_FOUND = "no lane markings found"
 
-    def __init__(self, project_root: Path, config_path: Path, video: Optional[str] = None, seconds: float = 20.0,
+    def __init__(self, project_root: Path, config_path: Path, video: Optional[str] = None, seconds: float = 120.0,
                  vlm_url: Optional[str] = None, vlm_model: Optional[str] = None):
         self.config_path = Path(config_path)
-        self.reviewed = bool(vlm_url)
-        args = ["--config", self.config_path, "--seconds", seconds]
+        self.reviewed = True                  # final: the paint is checked by the tool (see the module doc)
+        out = Path(project_root) / "data" / "results" / "scene_logic" / f"lanes_{self.config_path.stem}"
+        args = ["--camera-config", self.config_path, "--out", out, "--seconds", seconds, "--log-prefix", self.PREFIX]
         if video:
             args += ["--video", video]
-        if vlm_url:
-            args += ["--vlm-url", vlm_url, "--vlm-model", vlm_model or "qwen2.5vl:7b"]
-        super().__init__(project_root, "extract_lanes.py", args)
+        super().__init__(project_root, "scene_calibration.py", args)

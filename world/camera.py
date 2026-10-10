@@ -105,6 +105,24 @@ class WorldCamera:
         J = self.jacobian(px, py)
         return J.T @ J
 
+    def road_points(self, pixels: np.ndarray) -> np.ndarray:
+        """(N, 2) calibration-frame pixels -> (N, 2) road metres (below the horizon)."""
+        p = np.column_stack([np.asarray(pixels, float).reshape(-1, 2), np.ones(len(np.asarray(pixels).reshape(-1, 2)))])
+        g = p @ self.homography.T
+        return g[:, :2] / g[:, 2:3]
+
+    def image_points(self, road: np.ndarray) -> np.ndarray:
+        """(N, 2) road metres -> (N, 2) calibration-frame pixels."""
+        q = np.column_stack([np.asarray(road, float).reshape(-1, 2), np.ones(len(np.asarray(road).reshape(-1, 2)))])
+        p = q @ np.linalg.inv(self.homography).T
+        return p[:, :2] / p[:, 2:3]
+
+    @property
+    def vanishing_point(self) -> Tuple[float, float]:
+        """Image point of the road direction (+Y) at infinity."""
+        v = np.linalg.inv(self.homography) @ np.array([0.0, 1.0, 0.0])
+        return float(v[0] / v[2]), float(v[1] / v[2])
+
     def distance(self, p: Sequence[float], q: Sequence[float]) -> float:
         """Metres on the road between two pixels (calibration frame)."""
         return float(np.hypot(*np.subtract(self.to_road(*p), self.to_road(*q))))
