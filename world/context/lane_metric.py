@@ -16,7 +16,13 @@ Given the lane vanishing point v (world/context/lane_markings.py):
    differ). The f whose  lane width / dash period  matches the standard is taken.
    The period (start to start) is used, not the dash length: blur lengthens dashes
    (6 m measured as ~6.7 m), but shifts both starts alike.
-4. Height: the lane width equals the standard's.
+4. Height: the lane width equals the standard's. The lane width is measured between
+   the boundaries that follow the standard's dash pattern - the dashed lines between
+   lanes - only: kerbs, median edges, barriers and solid edge lines found next to them
+   are boundaries too, but their spacings to the lane lines are not lane widths (TUM
+   50 mm: they pulled the width to ~half and the height to ~2x). Duplicates of one
+   line are merged and a spacing over a missed line (k lanes) is folded back by k,
+   as missed dashes are in the dash period.
 5. Checks (postconditions): the field of view, the height, the spread of the lane
    widths, how many periods support the standard and its margin over the next one,
    and the width of car boxes measured with the result — evidence independent of
@@ -36,6 +42,8 @@ from world.context.sources import lane_evidence
 BOUNDARY_GAP_RAD = 0.012        # angle gap around the vanishing point separating two lane boundaries
 MIN_DASH_PX = 12.0              # dash segments shorter than this (far, blurred) are not measured
 LANE_WIDTH_BAND = (0.7, 1.35)   # x the lower quartile of boundary spacings: one lane (not two, not a shoulder)
+                                # (used only when fewer than two dashed lane lines are measured)
+DUPLICATE_LINE = 0.5            # x the median spacing: two dashed "boundaries" this close are one line
 FOCAL_RANGE = (0.3, 15.0)       # x image width: candidate focal lengths (hfov ~ 120 .. 4 deg)
 CAR_BOX_WIDTH_RANGE = (1.8, 3.2)   # m: median width of YOLO "car" boxes at their bottom edge (the box
                                    # spans the car and some of its side: 2.1 - 3.1 m, median 2.55 m,
@@ -100,6 +108,30 @@ def dash_period_m(camera: CameraModel, boundary: np.ndarray) -> float:
     return float(np.median(periods / np.maximum(np.round(periods / max(base, 1e-9)), 1)))
 
 
+def lane_widths(camera: CameraModel, dashed: List[np.ndarray]) -> np.ndarray:
+    """Lane widths between the dashed lane lines (road units of `camera`): their lateral
+    positions, duplicates of one line merged, spacings over k lanes (a missed line, or
+    the median between two carriageways) divided by k."""
+    xs = []
+    for b in dashed:
+        g = camera.to_ground(np.vstack([b[:, :2], b[:, 2:]]))
+        xs.append(float(np.median(g[:, 0])))
+    xs = np.sort(xs)
+    spacing = np.diff(xs)
+    if not len(spacing):
+        return np.zeros(0)
+    merged = [xs[0]]
+    for x in xs[1:]:
+        if x - merged[-1] >= DUPLICATE_LINE * np.median(spacing):
+            merged.append(x)
+    spacing = np.diff(merged)
+    if not len(spacing):
+        return np.zeros(0)
+    base = float(np.min(spacing))
+    k = np.maximum(np.round(spacing / base), 1)
+    return spacing / k
+
+
 def measure(camera: CameraModel, boundaries: List[np.ndarray], dashed: Optional[List[np.ndarray]] = None
             ) -> Dict[str, float]:
     """Lane width, dash length and dash period on the road for a camera (height 1 =
@@ -117,9 +149,11 @@ def measure(camera: CameraModel, boundaries: List[np.ndarray], dashed: Optional[
     xs = np.sort(xs)
     spacing = np.diff(xs)
     out = {"boundary_x": xs, "n_spacings": len(spacing)}
-    if len(spacing):
+    lane = lane_widths(camera, dashed) if dashed is not None else np.zeros(0)
+    if len(lane) < 2 and len(spacing):          # too few dashed lines: all boundaries, lower-quartile band
         base = np.percentile(spacing, 25)
         lane = spacing[(spacing >= LANE_WIDTH_BAND[0] * base) & (spacing <= LANE_WIDTH_BAND[1] * base)]
+    if len(spacing) or len(lane):
         out["lane_width"] = float(np.median(lane)) if len(lane) else float("nan")
         out["lane_width_cv"] = float(np.std(lane) / np.mean(lane)) if len(lane) > 1 else float("nan")
         out["n_lane_widths"] = int(len(lane))
