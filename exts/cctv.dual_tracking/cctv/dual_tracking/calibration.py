@@ -5,12 +5,12 @@ Each runs a tool in its own process (YOLO and CUDA stay out of the renderer, as 
 the perception process) and follows its "[<prefix>] ..." progress lines, never
 blocking Kit.
 
-AutoCalibration (tools/calibrate_video.py): the stored calibration of the same camera
-when the view is unchanged, otherwise the lane markings (METRIC) of the first seconds
-of the video. On success the tool has written config/auto_<recording>.yaml (with the
-lane markings), which the extension then switches the replay to; the calibration
-itself is stored per camera (data/calibrations/<camera id>/), so the next recording of
-the same camera reuses it while the view is unchanged.
+AutoCalibration (tools/scene_calibration.py): the scene dynamic logic over the first
+seconds of the video (world/scene_logic.py: static and dynamic edges per pixel, the
+calibration automaton confirming the camera when two cycles agree). On success the
+tool has written config/auto_<recording>.yaml - one camera for the Isaac scene and the
+world model, and the lane markings read from the static edges - which the extension
+then switches the replay to.
 
 LaneExtraction (tools/extract_lanes.py): the marking pieces of the video projected with
 the scenario's own homography, cached in data/cache/lanes/ (world/context/lane_cache.py);
@@ -119,12 +119,10 @@ class AutoCalibration(BackgroundTool):
         self.video = video
         self.camera_id = camera_id_for(video)
         self.config_path = Path(project_root) / "config" / f"auto_{video_key(video)}.yaml"
-        args = ["--video", video, "--camera-id", self.camera_id, "--seconds", seconds, "--out", self.config_path]
-        if fps:
-            args += ["--fps", fps]
-        if standards:
-            args += ["--standards", *standards]
-        super().__init__(project_root, "calibrate_video.py", args)
+        out = Path(project_root) / "data" / "results" / "scene_logic" / video_key(video)
+        args = ["--video", video, "--seconds", seconds, "--out", out, "--config", self.config_path,
+                "--log-prefix", self.PREFIX, "--standard", *(standards or ["any"])]
+        super().__init__(project_root, "scene_calibration.py", args)
 
     def succeeded(self) -> bool:
         return self.config_path.exists()

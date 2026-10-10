@@ -540,7 +540,7 @@ class DynamicLogic:
             x: Measured X position (meters)
             y: Measured Y position (meters)
             measurement_cov: 2x2 position covariance (m^2), e.g. from
-                CoordinateMapper.position_covariance
+                WorldCamera.position_covariance (world/camera.py)
             agent: "vehicle" or "person" (selects the motion profile)
             emerging: the detection appears from behind another road user (its box
                 is largely covered by another one): a birth inside the view is expected

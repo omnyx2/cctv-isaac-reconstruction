@@ -2,11 +2,12 @@
 
 A calibration (an admitted CalibrationHypothesis) turns into a RoadContext:
 
-  - the road plane chart: image <-> road meters (homography H). In image coordinates
+  - the road plane chart: image <-> road meters, by the world's camera
+    (world/camera.py WorldCamera: homography H, pinhole model). In image coordinates
     the road metric is non-Euclidean: a pixel step dp has length |J dp| with
     J = d(road)/d(pixel), so ds^2 = dp^T (J^T J) dp varies across the image (one
     pixel near the horizon covers meters). `metric_tensor` gives J^T J; measurement
-    covariances use J (world/coordinate_mapper.py), so the filters work in the
+    covariances use J (WorldCamera.position_covariance), so the filters work in the
     Euclidean road chart with the pulled-back noise.
   - the evolution domain: road points whose image lies in the road region (where
     vehicles drove) — the flows of the hybrid automata are confined to it
@@ -24,6 +25,7 @@ from typing import Callable, Optional, Tuple
 import cv2
 import numpy as np
 
+from world.camera import WorldCamera
 from world.context.selector import CalibrationHypothesis, GeometryLevel, Selection
 from world.geometry import front_oriented
 
@@ -37,32 +39,29 @@ class RoadContext:
     def level(self) -> GeometryLevel:
         return self.hypothesis.level
 
+    camera: Optional[WorldCamera] = None      # the world's camera (default: of the hypothesis)
+
+    def __post_init__(self):
+        if self.camera is None:
+            self.camera = WorldCamera.from_hypothesis(self.hypothesis)
+
     @property
     def homography(self) -> Optional[np.ndarray]:
-        return self.hypothesis.homography
+        return self.camera.homography
 
     def to_road(self, px: float, py: float) -> Tuple[float, float]:
-        H = self.homography
-        if H is None:
+        if self.homography is None:
             raise RuntimeError(f"no road chart at level {self.level.name}")
-        v = H @ np.array([px, py, 1.0])
-        return float(v[0] / v[2]), float(v[1] / v[2])
+        return self.camera.to_road(px, py)
 
     def to_image(self, x: float, y: float) -> Tuple[float, float]:
-        v = np.linalg.inv(self.homography) @ np.array([x, y, 1.0])
-        return float(v[0] / v[2]), float(v[1] / v[2])
+        return self.camera.to_image(x, y)
 
     def jacobian(self, px: float, py: float) -> np.ndarray:
-        """d(road X, Y) / d(pixel x, y) at a pixel."""
-        H = self.homography
-        u = H @ np.array([px, py, 1.0])
-        w = u[2]
-        return (H[:2, :2] * w - np.outer(u[:2], H[2, :2])) / (w * w)
+        return self.camera.jacobian(px, py)
 
     def metric_tensor(self, px: float, py: float) -> np.ndarray:
-        """g = J^T J: squared road length (m^2) of a pixel step at (px, py)."""
-        J = self.jacobian(px, py)
-        return J.T @ J
+        return self.camera.metric_tensor(px, py)
 
     def exit_zone(self, border_ratio: float = 0.02, min_vehicle_px: float = 22.0, vehicle_width_m: float = 1.8
                   ) -> Optional[Callable[[float, float], bool]]:
