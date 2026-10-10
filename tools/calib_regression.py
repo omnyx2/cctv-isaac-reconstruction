@@ -42,16 +42,17 @@ STANDARD = "DE_autobahn"
 
 
 def pipeline(video: Path, out: Path):
-    """The steps under test: (script, arguments)."""
+    """The steps under test: (script, arguments). Baseline (master): edge_accumulate.py,
+    vp_gaussian_process.py, calibrate_from_vp.py; here the scene dynamic logic."""
     return [
-        ("tools/edge_accumulate.py", ["--video", str(video), "--blur", "3", "9", "--out", str(out)]),
-        ("tools/vp_gaussian_process.py", ["--dir", str(out / "blur9"), "--no-dense"]),
-        ("tools/calibrate_from_vp.py", ["--dir", str(out), "--standard", STANDARD]),
+        ("tools/scene_calibration.py", ["--video", str(video), "--out", str(out), "--standard", STANDARD]),
     ]
 
 
 def result_of(out: Path) -> dict:
-    path = out / "blur9" / "calibration.json"
+    path = out / "calibration.json"
+    if not path.exists():
+        path = out / "blur9" / "calibration.json"
     if not path.exists():
         return {"error": "no calibration.json"}
     c = json.loads(path.read_text())

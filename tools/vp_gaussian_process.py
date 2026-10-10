@@ -175,6 +175,34 @@ def optimize(signal: RaySignal, lo: np.ndarray, hi: np.ndarray, start: int, iter
     return pts, y.cpu().numpy(), gp, (lo_t, span)
 
 
+def find_vanishing_point(image: np.ndarray, rng, domain=DOMAIN):
+    """Stages 1 and 2 without pictures: the vanishing point (full-resolution px) and
+    its log signal at stage 2."""
+    h, w = image.shape
+    s1 = RaySignal(image, **{k: STAGES[0][k] for k in ("scale", "sigma", "side", "step_deg")})
+    lo = np.array([domain[0][0] * w, domain[1][0] * h])
+    hi = np.array([domain[0][1] * w, domain[1][1] * h])
+    pts1, y1, gp1, _ = optimize(s1, lo, hi, STAGES[0]["start"], STAGES[0]["iterations"], rng)
+    gx, gy = np.meshgrid(np.linspace(lo[0], hi[0], 400), np.linspace(lo[1], hi[1], 150))
+    q = torch.tensor(np.c_[gx.ravel(), gy.ravel()], device=DEVICE)
+    mean1 = gp1.predict((q - torch.tensor(lo, device=DEVICE)) / torch.tensor(hi - lo, device=DEVICE))[0].cpu().numpy()
+    hills = [pts1[np.argmax(y1)]]
+    for k in np.argsort(-mean1):
+        c = np.array([gx.ravel()[k], gy.ravel()[k]])
+        if all(np.hypot(*(c - o)) >= CANDIDATE_SEPARATION * w for o in hills):
+            hills.append(c)
+        if len(hills) == CANDIDATES:
+            break
+    s2 = RaySignal(image, **{k: STAGES[1][k] for k in ("scale", "sigma", "side", "step_deg")})
+    half = FINE_HALF_WIDTH * w
+    best = None
+    for c in hills:
+        pts2, y2, _, _ = optimize(s2, c - half, c + half, STAGES[1]["start"], STAGES[1]["iterations"], rng)
+        if best is None or y2.max() > best[1]:
+            best = (pts2[np.argmax(y2)], float(y2.max()))
+    return best
+
+
 # ---------------------------------------------------------------- pictures
 def heat(values: np.ndarray) -> np.ndarray:
     v = (values - values.min()) / max(values.max() - values.min(), 1e-12)
