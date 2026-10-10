@@ -82,6 +82,11 @@ class SetupWindow:
                 self._ollama_label = ui.Label("", word_wrap=True)
                 ui.Button(f"Pull {env.VLM_MODEL}", width=170, clicked_fn=self._pull)
 
+        with ui.CollapsableFrame("6  Code updates (git)", height=0):
+            with ui.HStack(height=28, spacing=6):
+                self._git_label = ui.Label("", word_wrap=True)
+                ui.Button("Update code (git pull)", width=190, clicked_fn=self._update_code)
+
         with ui.HStack(height=24, spacing=6):
             self._layout = ui.CheckBox(width=20)
             self._layout.model.set_value(bool(env.get(env.KEY_LAYOUT, False)))
@@ -138,6 +143,12 @@ class SetupWindow:
             return
         self._start(env.pull_vlm_model(self.project_root))
 
+    def _update_code(self):
+        if not (self.project_root / ".git").exists():
+            self._job_label.text = "not a git checkout (installed by copying): nothing to pull"
+            return
+        self._start(env.update_code(self.project_root))
+
     def _pick_folder(self, field):
         from omni.kit.window.filepicker import FilePickerDialog
 
@@ -154,6 +165,7 @@ class SetupWindow:
     def refresh_static(self):
         python = env.get(env.KEY_PERCEPTION)
         self._python_label.text = python or f"Isaac Sim's ({env.isaac_python()})"
+        self._git_label.text = env.git_status(self.project_root)
         models = env.ollama_models()
         self._ollama_label.text = ("not running (optional)" if models is None else
                                    f"running; {env.VLM_MODEL} {'present' if env.VLM_MODEL in models else 'missing'}")

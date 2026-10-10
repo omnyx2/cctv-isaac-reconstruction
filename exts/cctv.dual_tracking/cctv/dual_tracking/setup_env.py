@@ -262,6 +262,31 @@ def import_transfer(project_root: Path, folder: Path, datasets: Path) -> Job:
     ], project_root)
 
 
+def git_status(project_root: Path) -> str:
+    """Branch, commit and remote of the checkout, or why there is none."""
+    if not (project_root / ".git").exists():
+        return "not a git checkout"
+    if shutil.which("git") is None:
+        return "git not installed"
+
+    def git(*args):
+        r = subprocess.run(["git", "-C", str(project_root), *args], capture_output=True, text=True)
+        return r.stdout.strip()
+
+    remote = git("remote", "get-url", "origin") or "no remote"
+    return f"{git('rev-parse', '--abbrev-ref', 'HEAD')} @ {git('log', '-1', '--format=%h %s')[:60]}  ({remote})"
+
+
+def update_code(project_root: Path) -> Job:
+    """git pull --ff-only of the project; restart Isaac Sim afterwards to load new code."""
+    def done(job: Job):
+        if job.state == Job.DONE:
+            job.log("updated: restart Isaac Sim (or disable / enable the extensions) to load the new code")
+
+    return Job("Update code (git pull)", [["git", "-C", project_root, "pull", "--ff-only"]], project_root,
+               on_done=done)
+
+
 def ollama_url() -> str:
     url = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
     return url if url.startswith("http") else "http://" + url

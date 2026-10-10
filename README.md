@@ -41,14 +41,27 @@ C:\isaacsim\isaac-sim.bat --ext-folder exts --enable cctv.dual_tracking --enable
 YOLO와 별개로 비전-언어 모델이 장면을 설명한다(사고·연기·도로 위 사람 등). Ollama를 설치하고 `ollama pull qwen2.5vl:7b`를 한 뒤
 설정에서 `vlm.enabled: true`로 켠다. 오프라인 분석: `C:\isaacsim\kit\python\python.exe tools/vlm_analyze.py --config <설정>`.
 
-## 문서
+## 설치 — Isaac Sim이 있는 다른 컴퓨터 (예: DGX Spark)
 
-| 문서 | 내용 |
-|---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 코드 구조, 계층·의존 규칙, 프로세스 모델, 데이터 흐름, 주요 클래스, 작업 방법 |
-| [docs/TECHNICAL_NOTES.md](docs/TECHNICAL_NOTES.md) | 적용 알고리즘과 기술 — 어디에, 무엇을, 어떤 문제를 해결했는지와 측정 수치 |
-| [docs/DATA_POLICY.md](docs/DATA_POLICY.md) | **원본(raw) CCTV만 사용한다**는 규칙과 보유 데이터 판정 |
-| [docs/SESSION_LOG_2026-10-08.md](docs/SESSION_LOG_2026-10-08.md) | 작업 경위 (시간순) |
+이 저장소에는 **코드만** 있다. 데이터셋, 모델 가중치(`*.pt`), 캐시(`data/`), 문서와 사진(`docs/`)은 들어 있지 않다.
+
+1. **코드를 받는다.** 둘 중 하나.
+   - 터미널에서 `git clone https://github.com/<user>/cctv-isaac-reconstruction ~/CCTV_Project`
+     - 비공개 저장소라 그 컴퓨터에서 `gh auth login`을 한 번 해 둔다.
+   - Isaac Sim의 Window → Extensions → ☰ → Settings → Extension Search Paths에
+     `git+https://github.com/<user>/cctv-isaac-reconstruction.git?branch=master&dir=exts`를 넣는다.
+     - 이 방법은 Kit에 git 확장 경로 지원(`omni.kit.extpath.git`)과 git 인증이 있어야 한다.
+     - 안 되면 위의 `git clone` 후 `~/CCTV_Project/exts`를 넣는다.
+2. **확장을 켠다.** Extensions에서 `CCTV`를 검색해 **CCTV Timeline**을 켜고 Autoload를 체크한다. Dual Tracking은 같이 켜진다.
+3. **CCTV Setup 창에서 설정한다.** 창은 처음에 저절로 뜬다. 위에서부터 차례로 한다.
+   - 데이터셋 폴더를 지정한다.
+   - **Install packages**: Isaac Python에 패키지를 설치한다.
+   - **Import**: 데이터 전송 폴더를 가져온다. 전송 폴더는 원래 PC에서 `tools/pack_for_spark.py`로 만든다(모델, 캐시, 데이터셋).
+   - **Check environment**: 환경을 점검한다.
+   - **Create GPU venv**: 필요할 때만. Isaac 내장 torch가 GPU를 못 쓸 때(예: GB10 = sm_121) PyTorch cu130 venv를 만든다.
+   - **Update code**: 이후 코드 업데이트는 이 버튼(git pull)으로 한다.
+
+터미널만으로 하려면 `tools/setup_spark.sh`를 쓴다. 이 스크립트는 Isaac Sim 소스 빌드부터 시작한다.
 
 ## 현재 성능 (UA-DETRAC)
 
@@ -90,6 +103,6 @@ exts/          Isaac Sim 확장 cctv.dual_tracking (영상 선택 → 시뮬레�
 analysis/      오프라인 분석: 자동 도로 기하, 위험 장면 지표, TUM 사고 데이터
 tools/         캘리브레이션, 캐시, 평가, 위험 장면 탐색 도구
 config/        시퀀스별 설정, TEMPLATE.yaml
-docs/          문서
+docs/          문서 (로컬 전용, 저장소에 없음)
 data/          데이터셋·영상·결과 (git 제외)
 ```
