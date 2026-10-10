@@ -7,6 +7,7 @@ Unattended run of one scenario (snapshots, quit at the end):
         --/exts/cctv.dual_tracking/autostart_config=config/tum_r09_s01_south50.yaml
         --/exts/cctv.dual_tracking/snapshot_dir=C:/tmp/snaps --/exts/cctv.dual_tracking/quit_on_finish=true
         [--/exts/cctv.dual_tracking/vlm_periodic=true --/exts/cctv.dual_tracking/vlm_log=true]
+        [--/exts/cctv.dual_tracking/vlm_model=qwen3-vl:30b-a3b-instruct]  (Ollama model; default TEMPLATE.yaml)
         [--/exts/cctv.dual_tracking/autostart_video=<video or frame folder>]  (Browse + Start:
          a video without a config starts on autostart_config's calibration and is calibrated
          in the background, see calibration.py)
@@ -102,6 +103,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             self.recorder = Recorder(Path(record_dir), self._record_every)
 
         self.vlm = VLMController(self.project_root)
+        if settings.get(f"{SETTINGS}/vlm_model"):
+            self.vlm.settings["model"] = settings.get(f"{SETTINGS}/vlm_model")
         if settings.get(f"{SETTINGS}/vlm_log"):
             self.vlm.log_path = self.project_root / "data" / "results" / "vlm" / "extension_log.jsonl"
         self.window = ControlWindow(self.project_root, self.start, self.toggle_pause, self.restart, self.stop,

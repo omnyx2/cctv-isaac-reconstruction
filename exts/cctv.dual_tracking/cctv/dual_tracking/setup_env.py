@@ -72,7 +72,8 @@ def apply_to_environment():
 
 def isaac_python() -> str:
     """Isaac Sim's own interpreter (inside Kit sys.executable is the Kit binary)."""
-    if Path(sys.executable).stem.lower().startswith("python"):
+    from .session import running_in_own_python
+    if running_in_own_python():
         return sys.executable
     candidate = Path(sys.prefix) / ("python.exe" if sys.platform == "win32" else "bin/python3")
     return str(candidate)

@@ -44,7 +44,10 @@ def load_config(config_path: Path, project_root: Path, video_override: Optional[
 
 
 def runnable_configs(project_root: Path) -> List[Path]:
-    """Configs that describe a video with a calibration (TEMPLATE and annotation files excluded)."""
+    """Configs that describe a video with a calibration (TEMPLATE and annotation files excluded),
+    and whose video is on this computer: a scenario whose dataset was not downloaded would only
+    fail with "Video not found" at Start."""
+    from cctv_utils.paths import expand
     configs = []
     for path in sorted((project_root / "config").glob("*.yaml")):
         try:
@@ -52,7 +55,15 @@ def runnable_configs(project_root: Path) -> List[Path]:
                 data = yaml.safe_load(f) or {}
         except yaml.YAMLError:
             continue
-        if path.stem != "TEMPLATE" and "video" in data and "mapping" in data:
+        if path.stem == "TEMPLATE" or "video" not in data or "mapping" not in data:
+            continue
+        try:
+            video = Path(expand(data["video"]["path"]))
+        except (KeyError, TypeError):
+            continue
+        if not video.is_absolute():
+            video = project_root / video
+        if video.exists():
             configs.append(path)
     return configs
 
@@ -93,10 +104,23 @@ def perception_python() -> Optional[str]:
     external = external_perception_python()
     if external:
         return external
-    if Path(sys.executable).stem.lower().startswith("python"):
+    if running_in_own_python():
         return None
     candidate = Path(sys.prefix) / ("python.exe" if sys.platform == "win32" else "bin/python3")
     return str(candidate) if candidate.exists() else None
+
+
+def running_in_own_python() -> bool:
+    """sys.executable is this process's own Python interpreter. Inside Kit it is the Kit
+    binary on Windows, but on Linux it can be the system Python (/usr/bin/python3) though
+    the interpreter is Isaac Sim's in sys.prefix: count it only when it lives in sys.prefix."""
+    executable = Path(sys.executable)
+    if not executable.stem.lower().startswith("python"):
+        return False
+    try:
+        return Path(sys.prefix).resolve() in executable.resolve().parents
+    except OSError:
+        return True
 
 
 def perception_import_paths(modules=("torch", "ultralytics", "cv2", "numpy", "yaml")) -> List[str]:
