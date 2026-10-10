@@ -36,25 +36,28 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import torch.nn.functional as F
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from cctv_utils.paths import expand  # noqa: E402
 from tools.calibrate_from_vp import calibrate, dashes_along, draw, lines_through, tum_reference  # noqa: E402
-from tools.edge_accumulate import BATCH, Gpu, all_edges, read_frame  # noqa: E402
+from tools.edge_accumulate import BATCH, Gpu, all_edges, auto_canny, frame_paths, read_frame  # noqa: E402
 from tools.vp_gaussian_process import find_vanishing_point  # noqa: E402
+from world.context.lane_metric import FOCAL_RANGE  # noqa: E402
 from world.context.paint import ROAD_STANDARDS  # noqa: E402
 from world.scene_logic import DYNAMIC, STATIC, CalibrationLogic, EdgeExistence, edge_automaton  # noqa: E402
 
 ROAD_LEVEL = 0.03            # dynamic map (0..1) above this: something moved there
 ROAD_MARGIN = 0.03           # x image width: the road mask is widened by this (edge lines, kerbs)
 HFOV = (3.0, 120.0)
+FOCAL_EDGE = 1.05            # a focal within 5 % of the search range's ends: the search found no optimum
 HEIGHT = (3.0, 50.0)
 LANE_WIDTH_CV = 0.2
 
 
-def make_estimator(size, standard, rng, log):
+def make_estimator(size, standard, rng, log, use_road=True, lines_from="static"):
     w, h = size
     last = {}
 
@@ -63,11 +66,13 @@ def make_estimator(size, standard, rng, log):
         static, dynamic = edges.static_map(), edges.dynamic_map()
         vp_s, _ = find_vanishing_point(static, rng)                                   # 1
         vp_d, _ = find_vanishing_point(dynamic, rng) if dynamic.max() > 0 else (None, None)
-        road = (dynamic > ROAD_LEVEL).astype(np.uint8)                                 # 2
-        k = int(ROAD_MARGIN * w) * 2 + 1
-        road = cv2.dilate(road, np.ones((k, k), np.uint8))
+        k = int(ROAD_MARGIN * w)                                                       # 2 (dilation on the GPU)
+        moved = (edges.d > ROAD_LEVEL * edges.d.max()).float()[None, None]
+        road = F.max_pool2d(moved, 2 * k + 1, stride=1, padding=k)[0, 0].byte().cpu().numpy()
+        road = road if use_road else np.ones_like(road)
         thin_static = ((thin.modes() == STATIC) & (road > 0)).astype(np.uint8) * 255
-        lines, _ = lines_through(tuple(vp_s), static * (road > 0))                     # 3
+        line_image = static if lines_from == "static" else (edges.s / edges.s.max()).cpu().numpy()
+        lines, _ = lines_through(tuple(vp_s), line_image * (road > 0))                 # 3
         boundaries, flags = [], []
         for angle, _ in sorted(lines):
             seg, dashed = dashes_along(tuple(vp_s), angle, thin_static)
@@ -89,6 +94,9 @@ def make_estimator(size, standard, rng, log):
                    hfov_deg=round(camera.hfov_deg, 2), lane_lines=len(followers),
                    lane_width_cv=round(float(metric.get("lane_width_cv", float("nan"))), 3))
         reasons = []                                                                   # 4
+        lo, hi = FOCAL_RANGE[0] * w, FOCAL_RANGE[1] * w
+        if not lo * FOCAL_EDGE <= camera.focal_px <= hi / FOCAL_EDGE:
+            reasons.append(f"focal {camera.focal_px:.0f} px at the end of the search range")
         if not HFOV[0] <= camera.hfov_deg <= HFOV[1]:
             reasons.append(f"field of view {camera.hfov_deg:.0f} deg")
         if not HEIGHT[0] <= camera.height_m <= HEIGHT[1]:
@@ -114,19 +122,26 @@ def main():
     parser.add_argument("--drop", type=float, default=0.2)
     parser.add_argument("--blur", type=int, default=9)
     parser.add_argument("--thin-blur", type=int, default=3)
-    parser.add_argument("--canny", type=float, nargs=2, default=(50, 150))
+    parser.add_argument("--canny", type=float, nargs=2, default=None,
+                        help="Canny thresholds (default: from the video's contrast, edge_accumulate.auto_canny)")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--no-road", action="store_true", help="read lines everywhere, not only on the road (test)")
+    parser.add_argument("--lines-from", choices=("static", "edgesum"), default="static",
+                        help="image the lines through the vanishing point are found in (test)")
     args = parser.parse_args()
     video, out = Path(expand(args.video)), Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     start = time.time()
 
-    edges, size_hw, paths = all_edges(video, args.canny, 24)
+    canny = tuple(args.canny) if args.canny else auto_canny(video, frame_paths(video))
+    print(f"Canny thresholds {canny[0]:.0f} / {canny[1]:.0f}")
+    edges, size_hw, paths = all_edges(video, canny, 24)
     h, w = size_hw
     gpu = Gpu(size_hw)
     wide = EdgeExistence(gpu.torch, size_hw, gpu.device, args.drop)
     thin = EdgeExistence(gpu.torch, size_hw, gpu.device, args.drop)
-    estimate, last = make_estimator((w, h), ROAD_STANDARDS[args.standard], np.random.default_rng(args.seed), print)
+    estimate, last = make_estimator((w, h), ROAD_STANDARDS[args.standard], np.random.default_rng(args.seed), print,
+                                    use_road=not args.no_road, lines_from=args.lines_from)
     logic = CalibrationLogic(estimate, w)
     print(f"{len(edges)} frames {w}x{h}; edge existence and calibration automata:")
     print("\n".join("  " + line for line in (edge_automaton(args.drop).describe() + "\n" + logic.automaton.describe()).split("\n")))

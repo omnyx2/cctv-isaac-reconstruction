@@ -113,7 +113,8 @@ def matern52(a: torch.Tensor, b: torch.Tensor, length: float) -> torch.Tensor:
 
 
 class GP:
-    """Zero-mean GP on standardized targets; length scale and noise by marginal likelihood."""
+    """Zero-mean GP on standardized targets; length scale and noise by marginal likelihood
+    (all candidate pairs at once: one batched Cholesky on the GPU)."""
 
     LENGTHS = np.logspace(-2.3, -0.3, 14)
     NOISES = (1e-4, 1e-3, 1e-2)
@@ -121,19 +122,18 @@ class GP:
     def fit(self, x: torch.Tensor, y: torch.Tensor):
         self.x, self.mu, self.sd = x, y.mean(), y.std().clamp_min(1e-9)
         z = (y - self.mu) / self.sd
-        best = None
-        for length in self.LENGTHS:
-            for noise in self.NOISES:
-                k = matern52(x, x, length) + noise * torch.eye(len(x), device=x.device, dtype=x.dtype)
-                try:
-                    chol = torch.linalg.cholesky(k)
-                except RuntimeError:
-                    continue
-                alpha = torch.cholesky_solve(z[:, None], chol)
-                nll = 0.5 * (z[:, None] * alpha).sum() + torch.log(torch.diagonal(chol)).sum()
-                if best is None or nll < best[0]:
-                    best = (float(nll), length, noise, chol, alpha)
-        _, self.length, self.noise, self.chol, self.alpha = best
+        length = torch.tensor(np.repeat(self.LENGTHS, len(self.NOISES)), device=x.device, dtype=x.dtype)
+        noise = torch.tensor(np.tile(self.NOISES, len(self.LENGTHS)), device=x.device, dtype=x.dtype)
+        s5 = math.sqrt(5) * torch.cdist(x, x)[None] / length[:, None, None]
+        k = (1 + s5 + s5 * s5 / 3) * torch.exp(-s5) + noise[:, None, None] * torch.eye(len(x), device=x.device, dtype=x.dtype)
+        chol, info = torch.linalg.cholesky_ex(k)
+        zb = z[None, :, None].expand(len(length), -1, -1)
+        alpha = torch.cholesky_solve(zb, chol)
+        nll = 0.5 * (zb * alpha).sum((1, 2)) + torch.log(torch.diagonal(chol, dim1=1, dim2=2).abs()).sum(1)
+        nll = torch.where(info == 0, nll, torch.full_like(nll, float("inf")))
+        best = int(torch.argmin(nll))
+        self.length, self.noise = float(length[best]), float(noise[best])
+        self.chol, self.alpha = chol[best], alpha[best]
         return self
 
     def predict(self, q: torch.Tensor):
@@ -159,14 +159,16 @@ def optimize(signal: RaySignal, lo: np.ndarray, hi: np.ndarray, start: int, iter
     def evaluate(u):                                             # u in [0, 1]^2
         return torch.log(signal((lo_t + u * span).float()).double() + 1e-9)
 
-    u = torch.tensor(rng.random((start, 2)), device=DEVICE)
+    gen = torch.Generator(device=DEVICE)
+    gen.manual_seed(int(rng.integers(2 ** 31)))
+    u = torch.rand((start, 2), generator=gen, device=DEVICE, dtype=torch.float64)
     y = evaluate(u)
     gp = GP()
     for _ in range(iterations):
         gp.fit(u, y)
-        cand = torch.cat([torch.tensor(rng.random((20000, 2)), device=DEVICE),
-                          (u[torch.argmax(y)] + 0.02 * torch.tensor(rng.standard_normal((2000, 2)), device=DEVICE))
-                          .clamp(0, 1)])
+        cand = torch.cat([torch.rand((20000, 2), generator=gen, device=DEVICE, dtype=torch.float64),
+                          (u[torch.argmax(y)] + 0.02 * torch.randn((2000, 2), generator=gen, device=DEVICE,
+                                                                   dtype=torch.float64)).clamp(0, 1)])
         mean, std = gp.predict(cand)
         nxt = cand[torch.argmax(expected_improvement(mean, std, y.max()))][None]
         u, y = torch.cat([u, nxt]), torch.cat([y, evaluate(nxt)])
