@@ -46,10 +46,10 @@ YOLO와 별개로 비전-언어 모델이 장면을 설명한다(사고·연기�
 이 저장소에는 **코드만** 있다. 데이터셋, 모델 가중치(`*.pt`), 캐시(`data/`), 문서와 사진(`docs/`)은 들어 있지 않다.
 
 1. **코드를 받는다.** 둘 중 하나.
-   - 터미널에서 `git clone https://github.com/<user>/cctv-isaac-reconstruction ~/CCTV_Project`
+   - 터미널에서 `git clone https://github.com/omnyx2/cctv-isaac-reconstruction ~/CCTV_Project`
      - 비공개 저장소라 그 컴퓨터에서 `gh auth login`을 한 번 해 둔다.
    - Isaac Sim의 Window → Extensions → ☰ → Settings → Extension Search Paths에
-     `git+https://github.com/<user>/cctv-isaac-reconstruction.git?branch=master&dir=exts`를 넣는다.
+     `git+https://github.com/omnyx2/cctv-isaac-reconstruction.git?branch=master&dir=exts`를 넣는다.
      - 이 방법은 Kit에 git 확장 경로 지원(`omni.kit.extpath.git`)과 git 인증이 있어야 한다.
      - 안 되면 위의 `git clone` 후 `~/CCTV_Project/exts`를 넣는다.
 2. **확장을 켠다.** Extensions에서 `CCTV`를 검색해 **CCTV Timeline**을 켜고 Autoload를 체크한다. Dual Tracking은 같이 켜진다.
