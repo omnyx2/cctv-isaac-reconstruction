@@ -24,8 +24,10 @@ CACHE_DIR = Path("data") / "cache" / "lanes"
 
 
 def cache_key(config: dict) -> str:
-    from cctv_utils.paths import expand
-    video = Path(expand((config.get("video") or {}).get("path", ""))).as_posix().lower()
+    """<video name>_<hash of the machine-independent video path and the calibration
+    points>: the same key on every machine (${DATASETS}/..., ${PROJECT}/...)."""
+    from cctv_utils.paths import portable
+    video = portable((config.get("video") or {}).get("path", "")).lower()
     points = (config.get("mapping") or {}).get("calibration_points") or []
     digest = hashlib.sha1(json.dumps([video, points], sort_keys=True).encode()).hexdigest()[:12]
     stem = Path(video.rstrip("/")).name or "video"
