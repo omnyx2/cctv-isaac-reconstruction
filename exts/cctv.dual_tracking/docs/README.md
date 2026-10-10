@@ -16,8 +16,8 @@ The **CCTV Dual Tracking** window:
 | Control | |
 |---|---|
 | Scenario | a calibrated config from `config/` (video + camera calibration) |
-| Browse... | a video file or a folder of frames. If a config uses that video, it is selected; otherwise the video starts with the selected scenario's calibration and is calibrated automatically (below) |
-| Auto-calibrate / Road / s | calibrate videos without a config in the background (on by default); the allowed road standard ("any", DE_autobahn, CN_expressway, KR_expressway, KR_urban, US_interstate); seconds of video to perceive |
+| Browse... | a video file or a folder of frames. If a config uses that video, it is selected; otherwise its first frame is shown and Start calibrates it from its first seconds (~30 s, below), then replays it from the start with that calibration. A failed calibration is reported with its conditions; no other scenario's calibration is used |
+| Auto-calibrate / Road / s | calibrate videos without a config (on by default; off: replay with the selected scenario's calibration); the road standard of the country ("any", DE_autobahn, CN_expressway, KR_expressway, KR_urban, US_interstate; remembered, set it once - "any" can mistake one standard's dash ratio for another's); seconds of video to perceive |
 | Calibration conditions | progress, and every condition of every calibration source (why one was admitted or rejected) |
 | Start / Pause / Restart / Stop | replay control |
 | Image | the real video with YOLO tracks; the reconstruction is in the viewport (CCTV camera) |
@@ -89,7 +89,7 @@ Nothing blocks the UI.
 |---|---|---|
 | `project_root` | the project containing `exts/` | |
 | `autostart_config` | "" | config to start right away (project-relative) |
-| `autostart_video` | "" | with `autostart_config`: Browse this video and Start (auto-calibration as in the window) |
+| `autostart_video` | "" | Browse this video and Start (alone: calibrate and replay it; with `autostart_config`: that scenario selected first) |
 | `snapshot_dir` / `snapshot_every` | "" / 125 | save real view + viewport every N frames |
 | `quit_on_finish` | false | quit Isaac Sim at the end of the video |
 | `vlm_periodic` | false | periodic VLM analysis on from the start |

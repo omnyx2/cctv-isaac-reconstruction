@@ -44,7 +44,10 @@ def load_config(config_path: Path, project_root: Path, video_override: Optional[
 
 
 def runnable_configs(project_root: Path) -> List[Path]:
-    """Configs that describe a video with a calibration (TEMPLATE and annotation files excluded)."""
+    """Configs that describe a video with a calibration, and whose video is on this
+    machine (TEMPLATE, annotation files and scenarios of datasets not downloaded excluded)."""
+    from cctv_utils.paths import expand
+
     configs = []
     for path in sorted((project_root / "config").glob("*.yaml")):
         try:
@@ -53,7 +56,11 @@ def runnable_configs(project_root: Path) -> List[Path]:
         except yaml.YAMLError:
             continue
         if path.stem != "TEMPLATE" and "video" in data and "mapping" in data:
-            configs.append(path)
+            video = Path(expand((data.get("video") or {}).get("path", "")))
+            if not video.is_absolute():
+                video = project_root / video
+            if video.exists():
+                configs.append(path)
     return configs
 
 
