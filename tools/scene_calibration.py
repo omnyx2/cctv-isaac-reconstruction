@@ -71,10 +71,15 @@ ROAD_MARGIN = 0.03           # x image width: the road mask is widened by this (
 PAINT_CONTRAST = 12.0        # grey levels: a paint stripe is this much brighter than both its sides
 PAINT_NEAR_PX = 6            # the stripe: around the brightest point within this across the read line (the
                              # read line is an edge of the paint - static edges are its outline - not its middle)
-PAINT_PROFILE_PX = 30        # the brightness profile across the line, this far to each side
-PAINT_MAX_WIDTH_PX = 40      # a wider bright band is no paint stripe (concrete barrier, shoulder)
+PAINT_PROFILE_PX = 60        # the brightness profile across the line, this far to each side
+PAINT_WIDTH_M = (0.05, 0.6)  # a paint stripe is this wide on the road (wider: concrete barrier, shoulder;
+                             # in pixels it is not bounded - an edge line near the camera spans ~50 px)
+PAINT_END_PX = 25            # dash ends are looked for this far beyond the read run
 PAINT_GAP_PX = 3             # the sides are read this far beyond the stripe's edges
-TRAFFIC_SIDE_PX = 25         # traffic beside a stripe: the dynamic map this far to either side
+TRAFFIC_SIDE_M = (0.5, 1.0, 2.0, 3.0, 4.0)   # traffic beside a stripe: the dynamic map this far (road m)
+                             # to either side (an edge line has the hard shoulder between it and traffic)
+MARK_NEAR_VP_PX = 60         # markings are read this close to the vanishing point (calibration: 200)
+MARK_MIN_RUN_PX = 5          # ... and down to this short (far dashes)
 PAINT_OVER_ASPHALT = 25.0    # grey levels: white paint is at least this much brighter than the asphalt
                              # (TUM s10: asphalt 139, edge line 194; guard rails are no brighter than asphalt)
 SAME_MARK_M = 0.4            # two markings this close sideways and overlapping along: one (both outline edges)
@@ -93,12 +98,14 @@ def background_gray(video: Path, paths, n_frames: int, samples: int = 25) -> np.
     return np.median(np.stack([cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) for f in pick if f is not None]), 0).astype(np.float32)
 
 
-def paint_contrast(gray: np.ndarray, seg: np.ndarray) -> np.ndarray:
+def paint_contrast(gray: np.ndarray, seg: np.ndarray, asphalt: float = None) -> np.ndarray:
     """Per segment: the brightness profile across it (mean grey along the segment); the
     stripe is the bright run around the brightest point near the line (above half way
-    between that point and the profile's minimum). Returns (N, 2): contrast = the
-    stripe's mean minus the brighter side just beyond its edges (0 for a band wider than
-    a paint stripe), and the stripe's mean."""
+    between that point and the asphalt - or the profile's minimum: a light concrete
+    barrier next to an edge line must not widen it). Returns (N, 4): contrast = the
+    stripe's mean minus the brighter side just beyond its edges, the stripe's mean, its
+    centre's offset across the line and its width (px; the read line is the stripe's
+    outline edge, the marking is drawn on its centre)."""
     out = []
     h, w = gray.shape
     for x1, y1, x2, y2 in seg:
@@ -117,18 +124,45 @@ def paint_contrast(gray: np.ndarray, seg: np.ndarray) -> np.ndarray:
         prof = np.array([mean(o) for o in offsets])
         near = np.abs(offsets) <= PAINT_NEAR_PX
         k = int(np.flatnonzero(near)[np.argmax(prof[near])])
-        level = 0.5 * (prof[k] + prof.min())
+        level = 0.5 * (prof[k] + (prof.min() if asphalt is None else max(prof.min(), asphalt)))
         lo, hi = k, k
         while lo > 0 and prof[lo - 1] > level:
             lo -= 1
         while hi < len(prof) - 1 and prof[hi + 1] > level:
             hi += 1
-        if hi - lo + 1 > PAINT_MAX_WIDTH_PX or lo - PAINT_GAP_PX < 0 or hi + PAINT_GAP_PX >= len(prof):
-            out.append((0.0, 0.0))
+        if lo - PAINT_GAP_PX < 0 or hi + PAINT_GAP_PX >= len(prof):
+            out.append((0.0, 0.0, 0.0, 0.0))
             continue
         stripe = float(prof[lo:hi + 1].mean())
-        out.append((stripe - max(prof[lo - PAINT_GAP_PX], prof[hi + PAINT_GAP_PX]), stripe))
-    return np.array(out).reshape(-1, 2)
+        out.append((stripe - max(prof[lo - PAINT_GAP_PX], prof[hi + PAINT_GAP_PX]), stripe,
+                    0.5 * (offsets[lo] + offsets[hi]), float(hi - lo + 1)))
+    return np.array(out).reshape(-1, 4)
+
+
+def refine_ends(gray: np.ndarray, x1, y1, x2, y2, level: float):
+    """The dash along its centre line: the run brighter than `level` around the middle,
+    looked for PAINT_END_PX beyond the read ends (the run read on the static edges has
+    their tolerance in it)."""
+    h, w = gray.shape
+    L = float(np.hypot(x2 - x1, y2 - y1))
+    if L < 1:
+        return x1, y1, x2, y2
+    d = np.array([x2 - x1, y2 - y1]) / L
+    s = np.arange(-PAINT_END_PX, L + PAINT_END_PX, 1.0)
+    xs, ys = x1 + s * d[0], y1 + s * d[1]
+    ok = (xs >= 0) & (xs < w) & (ys >= 0) & (ys < h)
+    v = np.zeros(len(s))
+    v[ok] = gray[ys[ok].astype(int), xs[ok].astype(int)]
+    above = v > level
+    mid = int(np.argmin(np.abs(s - L / 2)))
+    if not above[mid]:
+        return x1, y1, x2, y2
+    a, b = mid, mid
+    while a > 0 and above[a - 1]:
+        a -= 1
+    while b < len(s) - 1 and above[b + 1]:
+        b += 1
+    return xs[a], ys[a], xs[b], ys[b]
 
 
 def clip_to_range(camera, seg):
@@ -161,33 +195,65 @@ def merge_marks(markings):
     return kept
 
 
-def traffic_beside(moved: np.ndarray, seg: np.ndarray) -> np.ndarray:
-    """Per segment: whether the dynamic map has traffic TRAFFIC_SIDE_PX to one side of it."""
+def traffic_beside(camera, moved: np.ndarray, seg: np.ndarray) -> np.ndarray:
+    """Per segment: whether the dynamic map has traffic on one side of it, at one of the
+    road distances TRAFFIC_SIDE_M across its road direction."""
     h, w = moved.shape
     out = []
     for x1, y1, x2, y2 in seg:
-        t = np.linspace(0.1, 0.9, 12)
-        x, y = x1 + t * (x2 - x1), y1 + t * (y2 - y1)
-        d = np.array([x2 - x1, y2 - y1]) / max(np.hypot(x2 - x1, y2 - y1), 1e-9)
-        sides = []
-        for sign in (1, -1):
-            xi = np.clip((x - sign * d[1] * TRAFFIC_SIDE_PX).astype(int), 0, w - 1)
-            yi = np.clip((y + sign * d[0] * TRAFFIC_SIDE_PX).astype(int), 0, h - 1)
-            sides.append(moved[yi, xi].mean() >= 0.5)
-        out.append(any(sides))
+        if min(y1, y2) <= camera.horizon_y + 8:
+            out.append(False)
+            continue
+        t = np.linspace(0.1, 0.9, 8)
+        g = camera.to_ground(np.c_[x1 + t * (x2 - x1), y1 + t * (y2 - y1)])
+        u = g[-1] - g[0]
+        u = u / max(np.hypot(*u), 1e-9)
+        v = np.array([-u[1], u[0]])
+        found = False
+        for k in TRAFFIC_SIDE_M:
+            for sign in (1, -1):
+                p = camera.to_image(g + sign * k * v)
+                ok = (p[:, 0] >= 0) & (p[:, 0] < w) & (p[:, 1] >= 0) & (p[:, 1] < h)
+                if ok.sum() >= 4 and moved[p[ok, 1].astype(int), p[ok, 0].astype(int)].mean() >= 0.5:
+                    found = True
+                    break
+            if found:
+                break
+        out.append(found)
     return np.array(out, bool)
+
+
+def stripe_width_m(camera, seg, centre_px: float, width_px: float) -> float:
+    """Road width (m) of a stripe `width_px` wide across the segment's middle: the two
+    edge points on the road, their distance across the line's road direction (the image
+    normal of a line seen at a slant runs mostly along the road - its full length would
+    be metres)."""
+    x1, y1, x2, y2 = seg
+    d = np.array([x2 - x1, y2 - y1]) / max(np.hypot(x2 - x1, y2 - y1), 1e-9)
+    n = np.array([-d[1], d[0]])
+    m = np.array([(x1 + x2) / 2, (y1 + y2) / 2]) + centre_px * n
+    if m[1] <= camera.horizon_y + 8:
+        return float("nan")
+    g = camera.to_ground(np.array([m - n * width_px / 2, m + n * width_px / 2, m - d * 5, m + d * 5]))
+    u = (g[3] - g[2]) / max(np.hypot(*(g[3] - g[2])), 1e-9)                # the line on the road
+    e = g[1] - g[0]
+    return float(abs(u[0] * e[1] - u[1] * e[0]))
 
 
 def paint_markings(camera, boundaries, flags, followers, gray: np.ndarray, moved: np.ndarray):
     """The paint among the lines through the vanishing point, on the road:
-    [{"p": [[x1, y1], [x2, y2]], "paint": "white"}] (road metres) and the image segments.
+    [{"p": [[x1, y1], [x2, y2]], "paint": "white", "w": width}] (road metres; on the
+    stripe's centre, dashes to their ends in the image) and the image segments.
     `moved`: where the dynamic map has traffic (not dilated)."""
-    horizon = camera.horizon_y
     asphalt = float(np.median(gray[moved]))
     markings, drawn = [], []
     for i, seg in enumerate(boundaries):
-        contrast, stripe = paint_contrast(gray, seg).T if len(seg) else (np.zeros(0), np.zeros(0))
-        bright = (contrast >= PAINT_CONTRAST) & (stripe >= asphalt + PAINT_OVER_ASPHALT) & traffic_beside(moved, seg)
+        if not len(seg):
+            continue
+        contrast, stripe, centre, width_px = paint_contrast(gray, seg, asphalt).T
+        width_m = np.array([stripe_width_m(camera, s, c, wp) for s, c, wp in zip(seg, centre, width_px)])
+        bright = ((contrast >= PAINT_CONTRAST) & (stripe >= asphalt + PAINT_OVER_ASPHALT)
+                  & (width_m >= PAINT_WIDTH_M[0]) & (width_m <= PAINT_WIDTH_M[1]) & traffic_beside(camera, moved, seg))
         if flags[i]:
             keep = bright                                   # each dash of a dashed line (any pattern)
         elif len(seg):
@@ -196,16 +262,20 @@ def paint_markings(camera, boundaries, flags, followers, gray: np.ndarray, moved
             keep = bright if share >= PAINT_SHARE else np.zeros(len(seg), bool)   # an edge line, not a barrier
         else:
             continue
-        for (x1, y1, x2, y2), k in zip(seg, keep):
+        for (x1, y1, x2, y2), k, c, sm, wm in zip(seg, keep, centre, stripe, width_m):
             if not k:
                 continue
+            d = np.array([x2 - x1, y2 - y1]) / max(np.hypot(x2 - x1, y2 - y1), 1e-9)
+            x1, y1, x2, y2 = x1 - c * d[1], y1 + c * d[0], x2 - c * d[1], y2 + c * d[0]   # onto the centre
+            if flags[i]:
+                x1, y1, x2, y2 = refine_ends(gray, x1, y1, x2, y2, 0.5 * (sm + asphalt))
             clipped = clip_to_range(camera, (x1, y1, x2, y2))
             if clipped is None:
                 continue
             x1, y1, x2, y2 = clipped
             g = camera.to_ground(np.array([[x1, y1], [x2, y2]]))
             markings.append({"p": [[round(float(a), 3), round(float(b), 3)] for a, b in g], "paint": "white",
-                             "_img": (x1, y1, x2, y2)})
+                             "w": round(float(wm), 3), "_img": (x1, y1, x2, y2)})
     markings = merge_marks(markings)
     drawn = [m.pop("_img") for m in markings]
     return markings, drawn
@@ -238,12 +308,13 @@ def make_estimator(size, standards, rng, log, use_road=True, lines_from="static"
     w, h = size
     last = {}
 
-    def estimate_at(vp_s, static, thin_static, road, cycle):
-        """Steps 3-4 for one vanishing point: (estimate dict, drawing parts)."""
+    def estimate_at(vp_s, static, thin_static, road, cycle, read=None):
+        """Steps 3-4 for one vanishing point: (estimate dict, drawing parts). `read`:
+        dashes_along's near / min-run limits (the markings read farther)."""
         lines, _ = lines_through(tuple(vp_s), static * (road > 0))                    # 3
         boundaries, flags = [], []
         for angle, _ in sorted(lines):
-            seg, dashed = dashes_along(tuple(vp_s), angle, thin_static)
+            seg, dashed = dashes_along(tuple(vp_s), angle, thin_static, **(read or {}))
             if len(seg):
                 boundaries.append(seg)
                 flags.append(dashed)
@@ -401,7 +472,8 @@ def main():
 
         camera = CameraModel.from_vanishing_point(tuple(cam["vanishing_point"]), cam["focal_px"], (w, h), cam["height_m"])
         road, thin_static = estimate.road(wide, thin)
-        est, parts = estimate.at(tuple(cam["vanishing_point"]), wide.static_map(), thin_static, road, wide.cycles)
+        est, parts = estimate.at(tuple(cam["vanishing_point"]), wide.static_map(), thin_static, road, wide.cycles,
+                                 read={"near_vp_px": MARK_NEAR_VP_PX, "min_run_px": MARK_MIN_RUN_PX})
         if parts:
             gray = background_gray(video, paths, len(edges))
             moved = (wide.d > ROAD_LEVEL * wide.d.max()).cpu().numpy()

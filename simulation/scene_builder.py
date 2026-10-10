@@ -21,8 +21,9 @@ def build_scene(stage, ground_size: float = 100.0, camera_height: float = 10.0,
     """Author the scene on `stage`; returns the CCTV camera prim path.
 
     lane_markings: the detected marking pieces in road meters, [{"p": [[x1, y1], [x2, y2]],
-    "paint": "white"}, ...] (automatic calibration): drawn as they are (dashes, curves,
-    exit lanes). Without them the straight `lane_lines_x` are drawn."""
+    "paint": "white", "w": width_m (optional, default 0.15)}, ...] (automatic calibration):
+    drawn as they are (dashes, curves, exit lanes). Without them the straight
+    `lane_lines_x` are drawn."""
     _create_ground(stage, ground_size)
     _create_camera(stage, camera, camera_height)
     _create_lighting(stage)
@@ -129,7 +130,7 @@ def _create_lane_markings(stage, markings: Sequence[dict]):
         xform = UsdGeom.Xformable(piece)
         xform.AddTranslateOp().Set(Gf.Vec3d((x1 + x2) / 2, (y1 + y2) / 2, 0.01))
         xform.AddRotateZOp().Set(math.degrees(math.atan2(y2 - y1, x2 - x1)))
-        xform.AddScaleOp().Set(Gf.Vec3f(length, MARKING_WIDTH_M, 0.01))
+        xform.AddScaleOp().Set(Gf.Vec3f(length, float(m.get("w") or MARKING_WIDTH_M), 0.01))
 
 
 def show_camera_in_viewport(camera_path: str = CAMERA_PATH) -> bool:
