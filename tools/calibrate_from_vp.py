@@ -74,11 +74,13 @@ def lines_through(vp, ratio: np.ndarray):
     return [(float(theta[k]), float(r[k])) for k in chosen], (theta, r)
 
 
-def dashes_along(vp, angle_deg, static: np.ndarray):
-    """Step 2: runs of static edges along the line -> segments (N, 4) start..end (image px)."""
+def dashes_along(vp, angle_deg, static: np.ndarray, near_vp_px: float = NEAR_VP_PX, min_run_px: float = MIN_RUN_PX):
+    """Step 2: runs of static edges along the line -> segments (N, 4) start..end (image px).
+    (Drawing lane markings reads closer to the vanishing point and shorter runs than the
+    calibration: tools/scene_calibration.py.)"""
     h, w = static.shape
     t = math.radians(angle_deg)
-    r = np.arange(NEAR_VP_PX, 4 * max(w, h), 1.0)
+    r = np.arange(near_vp_px, 4 * max(w, h), 1.0)
     x, y = vp[0] + r * math.cos(t), vp[1] + r * math.sin(t)
     on = np.zeros(len(r), bool)
     for off in range(-COVER_PX, COVER_PX + 1):                  # across the ray
@@ -98,7 +100,7 @@ def dashes_along(vp, angle_deg, static: np.ndarray):
                 start = None
     if start is not None:
         runs.append((start, end))
-    runs = [(a, b) for a, b in runs if b - a >= MIN_RUN_PX]
+    runs = [(a, b) for a, b in runs if b - a >= min_run_px]
     seg = np.array([[x[a], y[a], x[b], y[b]] for a, b in runs]) if runs else np.zeros((0, 4))
     extent = (runs[-1][1] - runs[0][0]) if runs else 0
     longest = max((b - a for a, b in runs), default=0)
