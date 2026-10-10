@@ -78,6 +78,30 @@ def canny_packed(frame: np.ndarray, canny) -> np.ndarray:
     return np.packbits(cv2.Canny(gray, canny[0], canny[1]) > 0, axis=1)
 
 
+CANNY_HIGH_MAX = 150.0          # the fixed thresholds (50, 150) of a well-contrasted video
+CANNY_P99_REF = 100.0           # ... whose background gradient has its 99th percentile at least this
+
+
+def auto_canny(video: Path, paths=None, samples: int = 25):
+    """Canny thresholds for this video: (high / 3, high), high = 150 x min(1, p99 / 100),
+    p99 the 99th percentile of the gradient magnitude of the median background. A
+    well-contrasted video keeps (50, 150) (TUM p99 97 - 220); a foggy one (TUM s12
+    north: 54) gets lower ones, so its lane markings are edges in most frames again.
+    (Lowering them for every video in proportion added noise: TUM s09 south, p99 97,
+    focal error -3 % -> -16 %.)"""
+    if paths is None:
+        capture = cv2.VideoCapture(str(video))
+        n = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+        capture.release()
+        pick = [read_frame(video, int(i)) for i in np.linspace(0, max(n - 1, 0), samples)]
+    else:
+        pick = [cv2.imread(str(paths[int(i)])) for i in np.linspace(0, len(paths) - 1, samples)]
+    gray = np.median(np.stack([cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) for f in pick if f is not None]), 0).astype(np.uint8)
+    mag = np.hypot(cv2.Sobel(gray, cv2.CV_32F, 1, 0), cv2.Sobel(gray, cv2.CV_32F, 0, 1))
+    high = float(CANNY_HIGH_MAX * min(1.0, np.percentile(mag, 99) / CANNY_P99_REF))
+    return high / 3, high
+
+
 def all_edges(video: Path, canny, workers: int):
     """Bit-packed 0/1 edges of every frame, and the frame size."""
     paths = frame_paths(video)

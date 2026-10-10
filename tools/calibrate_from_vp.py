@@ -43,7 +43,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from cctv_utils.paths import datasets_root  # noqa: E402
 from tools.vp_gaussian_process import DEVICE, RAY_RANGE_DEG, RaySignal  # noqa: E402
 from world.context.camera import CameraModel  # noqa: E402
-from world.context.lane_metric import FOCAL_RANGE, PATTERN_TOLERANCE, dash_measurements, measure  # noqa: E402
+from world.context.lane_metric import (DUPLICATE_LINE, FOCAL_RANGE, LANE_WIDTH_BAND, MIN_DASH_PX,  # noqa: E402
+                                       PATTERN_TOLERANCE, dash_measurements, measure)
 from world.context.paint import ROAD_STANDARDS  # noqa: E402
 
 LINE_STEP_DEG = 0.05
@@ -105,6 +106,96 @@ def dashes_along(vp, angle_deg, static: np.ndarray):
     return seg, dashed
 
 
+FOCAL_GRID = 4000            # focal candidates (log-spaced over FOCAL_RANGE), evaluated at once on the GPU
+FOCAL_REFINE = 400           # ... then this many between the best one's neighbours
+PLAUSIBLE_HEIGHT = (3.0, 50.0)   # m: only focals whose camera stands this high are candidates
+PLAUSIBLE_HFOV = (3.0, 120.0)    # deg: ... and sees this wide (lane width / dash period = standard
+                                 # holds again at the shortest focals: TUM s09 south, 5 of 6 cycles)
+
+
+def ground_maps(vp, focals: torch.Tensor, size):
+    """Image -> road homographies (F, 3, 3) of the cameras through vp with these focals
+    (height 1; CameraModel.from_vanishing_point / image_to_ground, batched)."""
+    w, h = size
+    t = dict(device=focals.device, dtype=torch.float64)
+    cx, cy = w / 2, h / 2
+    d = torch.stack([(vp[0] - cx) / focals, (vp[1] - cy) / focals, torch.ones_like(focals)], -1)
+    d = d / d.norm(dim=-1, keepdim=True)
+    yaw = torch.asin(d[:, 0].clamp(-1, 1))
+    pitch = torch.asin((-d[:, 1] / torch.cos(yaw).clamp_min(1e-9)).clamp(-1, 1))
+    sp, cp, sy, cyw = torch.sin(pitch), torch.cos(pitch), torch.sin(yaw), torch.cos(yaw)
+    forward = torch.stack([-sy * cp, cyw * cp, -sp], -1)
+    right = torch.stack([cyw, sy, torch.zeros_like(sy)], -1)
+    down = torch.cross(forward, right, dim=-1)
+    R = torch.stack([right, down, forward], 1)                                    # (F, 3, 3)
+    K = torch.zeros((len(focals), 3, 3), **t)
+    K[:, 0, 0], K[:, 1, 1], K[:, 0, 2], K[:, 1, 2], K[:, 2, 2] = focals, focals, cx, cy, 1.0
+    center = torch.tensor([0.0, 0.0, 1.0], **t)
+    P = K @ torch.cat([R, -(R @ center)[:, :, None]], 2)
+    return torch.linalg.inv(P[:, :, [0, 1, 3]])
+
+
+def to_ground(H, pts: torch.Tensor):
+    """(F, 3, 3) homographies, (N, 2) pixels -> (F, N, 2) road points."""
+    q = torch.cat([pts, torch.ones_like(pts[:, :1])], 1)
+    g = torch.einsum("fij,nj->fni", H, q)
+    return g[..., :2] / g[..., 2:3]
+
+
+def lane_and_period(vp, focals: torch.Tensor, size, boundaries, dashed):
+    """measure()'s lane_width and dash_period (height 1) for every focal at once. Medians
+    as numpy's (the mean of the middle two of an even count: torch.median takes the lower
+    one, which let two copies of one line stay unmerged and made the lane width ~1/20)."""
+    dev = focals.device
+    H = ground_maps(vp, focals, size)
+    nan = torch.tensor(float("nan"), device=dev, dtype=torch.float64)
+
+    def positions(bs):                                  # median lateral position of each boundary (F, B)
+        return torch.stack([to_ground(H, torch.tensor(np.vstack([b[:, :2], b[:, 2:]]), device=dev))[..., 0]
+                            .quantile(0.5, dim=1) for b in bs], 1)
+
+    xs = positions(dashed).sort(1).values                                        # lane_widths()
+    spacing = xs[:, 1:] - xs[:, :-1]
+    med = spacing.quantile(0.5, dim=1)
+    last, widths = xs[:, 0], []
+    for j in range(1, xs.shape[1]):
+        keep = xs[:, j] - last >= DUPLICATE_LINE * med
+        widths.append(torch.where(keep, xs[:, j] - last, nan))
+        last = torch.where(keep, xs[:, j], last)
+    widths = torch.stack(widths, 1)
+    base = torch.nan_to_num(widths, nan=float("inf")).min(1).values
+    widths = widths / torch.clamp(torch.round(widths / base[:, None]), min=1)
+    n = (~torch.isnan(widths)).sum(1)
+    lane = torch.nanquantile(widths, 0.5, dim=1)
+    xs_all = positions(boundaries).sort(1).values                                # fewer than 2: all boundaries
+    sp_all = xs_all[:, 1:] - xs_all[:, :-1]
+    if sp_all.shape[1]:
+        q = torch.quantile(sp_all, 0.25, dim=1)[:, None]
+        band = torch.where((sp_all >= LANE_WIDTH_BAND[0] * q) & (sp_all <= LANE_WIDTH_BAND[1] * q), sp_all, nan)
+        lane = torch.where(n >= 2, lane, torch.nanquantile(band, 0.5, dim=1))
+
+    periods = []                                                                 # dash_period_m()
+    for b in dashed:
+        img_len = np.linalg.norm(b[:, 2:] - b[:, :2], axis=1)
+        b = b[img_len >= MIN_DASH_PX]
+        if len(b) < 2:
+            continue
+        y1 = to_ground(H, torch.tensor(b[:, :2], device=dev))[..., 1]
+        y2 = to_ground(H, torch.tensor(b[:, 2:], device=dev))[..., 1]
+        starts = torch.minimum(y1, y2)
+        starts = torch.where(torch.isfinite(starts), starts, nan).sort(1).values     # NaN sorts last
+        d = starts[:, 1:] - starts[:, :-1]
+        base = torch.nanquantile(d, 0.25, dim=1)[:, None]
+        folded = d / torch.clamp(torch.round(d / base.clamp_min(1e-9)), min=1)
+        periods.append(torch.nanquantile(folded, 0.5, dim=1))
+    if periods:                                     # boundaries without a finite period are left out (as measure())
+        period = torch.stack(periods, 1)
+        period = torch.nanquantile(torch.where(torch.isfinite(period), period, nan), 0.5, dim=1)
+    else:
+        period = torch.full_like(focals, float("nan"))
+    return lane, period
+
+
 def calibrate(vp, size, boundaries, dashed_idx, standard):
     """Steps 3-5."""
     followers, ratios = [], []
@@ -123,20 +214,27 @@ def calibrate(vp, size, boundaries, dashed_idx, standard):
     period_m = standard.dash_length_m + standard.dash_gap_m
     target = math.log(standard.lane_width_m / period_m)
 
-    def mismatch(f):
-        m = measure(CameraModel.from_vanishing_point(vp, f, size), boundaries, dashed)
-        if not (np.isfinite(m.get("lane_width", np.nan)) and np.isfinite(m["dash_period"]) and m["dash_period"] > 0):
-            return np.inf
-        return abs(math.log(m["lane_width"] / m["dash_period"]) - target)
+    def mismatch(focals: torch.Tensor) -> torch.Tensor:
+        lane, period = lane_and_period(vp, focals, size, boundaries, dashed)
+        err = (torch.log(lane / period) - target).abs()
+        height = standard.lane_width_m / lane
+        hfov = torch.rad2deg(2 * torch.atan(size[0] / 2 / focals))
+        plausible = ((height >= PLAUSIBLE_HEIGHT[0]) & (height <= PLAUSIBLE_HEIGHT[1])
+                     & (hfov >= PLAUSIBLE_HFOV[0]) & (hfov <= PLAUSIBLE_HFOV[1]))
+        ok = torch.isfinite(err) & (period > 0) & (lane > 0) & plausible
+        return torch.where(ok, err, torch.full_like(err, float("inf")))
 
-    focals = np.geomspace(FOCAL_RANGE[0] * size[0], FOCAL_RANGE[1] * size[0], 200)
-    errs = [mismatch(f) for f in focals]
-    k = int(np.nanargmin(errs))
-    lo, hi = focals[max(k - 1, 0)], focals[min(k + 1, len(focals) - 1)]
-    for _ in range(40):
-        a, b = lo + (hi - lo) / 3, hi - (hi - lo) / 3
-        lo, hi = (lo, b) if mismatch(a) < mismatch(b) else (a, hi)
-    f = (lo + hi) / 2
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    focals = torch.logspace(math.log10(FOCAL_RANGE[0] * size[0]), math.log10(FOCAL_RANGE[1] * size[0]), FOCAL_GRID,
+                            device=device, dtype=torch.float64)
+    errs = mismatch(focals)
+    k = int(torch.argmin(errs))
+    if not torch.isfinite(errs[k]):
+        raise ValueError("no focal length gives a plausible camera (height, field of view)")
+    fine = torch.linspace(float(focals[max(k - 1, 0)]), float(focals[min(k + 1, FOCAL_GRID - 1)]), FOCAL_REFINE,
+                          device=device, dtype=torch.float64)
+    f = float(fine[torch.argmin(mismatch(fine))])
+    focals, errs = focals.cpu().numpy(), errs.cpu().numpy()
     unit = measure(CameraModel.from_vanishing_point(vp, f, size), boundaries, dashed)
     height = standard.lane_width_m / unit["lane_width"]
     camera = CameraModel.from_vanishing_point(vp, f, size, height)
