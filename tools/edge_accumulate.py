@@ -102,16 +102,18 @@ def auto_canny(video: Path, paths=None, samples: int = 25):
     return high / 3, high
 
 
-def all_edges(video: Path, canny, workers: int):
-    """Bit-packed 0/1 edges of every frame, and the frame size."""
+def all_edges(video: Path, canny, workers: int, max_frames: int = 0):
+    """Bit-packed 0/1 edges of every frame (the first `max_frames` if > 0), and the frame size."""
     paths = frame_paths(video)
+    if paths is not None and max_frames > 0:
+        paths = paths[:max_frames]
     with ThreadPoolExecutor(workers) as pool:          # OpenCV releases the GIL
         if paths is not None:
             size = cv2.imread(str(paths[0])).shape[:2]
             edges = list(pool.map(lambda p: canny_packed(cv2.imread(str(p)), canny), paths))
         else:
             capture, futures = cv2.VideoCapture(str(video)), []
-            while True:
+            while max_frames <= 0 or len(futures) < max_frames:
                 ok, frame = capture.read()
                 if not ok:
                     break

@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from world.coordinate_mapper import CoordinateMapper
+from world.camera import WorldCamera
 from world.dynamic_logic import CONFIRMED, ENDED, DynamicLogic
 from world.scene_consistency import (candidate_pairs, count_overlaps, footprint_corners,
                                      half_extent_along, penetration, resolve_overlaps)
@@ -60,12 +60,12 @@ class WorldObject:
 class WorldTracker:
     """Turns tracked image detections into physically consistent world objects."""
 
-    def __init__(self, mapper: CoordinateMapper, dynamic_logic: DynamicLogic,
+    def __init__(self, mapper: WorldCamera, dynamic_logic: DynamicLogic,
                  image_size: Tuple[int, int],
                  camera_position: Optional[Sequence[float]] = None):
         """
         Args:
-            mapper: Calibrated image -> ground mapper
+            mapper: the world's camera (image -> road)
             dynamic_logic: Motion filter
             image_size: (width, height) of the video
             camera_position: Camera (x, y, ...) in world meters; used to place the

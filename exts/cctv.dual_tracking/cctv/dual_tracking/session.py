@@ -16,6 +16,8 @@ from typing import Callable, List, Optional
 import numpy as np
 import yaml
 
+CAMERA_MISMATCH_WARN_M = 0.5    # m: the config's two camera sections disagree more: say so
+
 
 def project_paths(config: dict, project_root: Path) -> dict:
     """Make the project-relative paths of a config absolute (Kit's working directory
@@ -240,6 +242,11 @@ class ReplaySession:
         self._perception.start()
         self.log(f"[CCTV] started {video['path']}: {size[0]}x{size[1]} @ {self.fps:.1f} FPS, "
                  f"{self.total_frames} frames")
+        mismatch = self._world.camera_mismatch_m
+        if mismatch is not None and mismatch > CAMERA_MISMATCH_WARN_M:
+            self.log(f"[CCTV] warning: simulation.camera and mapping.calibration_points disagree by up to "
+                     f"{mismatch:.2f} m on the road - the scene and the vehicles will not line up "
+                     f"(recalibrate, or write both from one camera)")
 
     def set_lane_markings(self, markings) -> bool:
         """Draw lane markings into the running scene (replacing the straight lane lines)."""

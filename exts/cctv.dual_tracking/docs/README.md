@@ -16,8 +16,8 @@ The **CCTV Dual Tracking** window:
 | Control | |
 |---|---|
 | Scenario | a calibrated config from `config/` (video + camera calibration) |
-| Browse... | a video file or a folder of frames. If a config uses that video, it is selected; otherwise its first frame is shown and Start calibrates it from its first seconds (~30 s, below), then replays it from the start with that calibration. A failed calibration is reported with its conditions; no other scenario's calibration is used |
-| Auto-calibrate / Road / s | calibrate videos without a config (on by default; off: replay with the selected scenario's calibration); the road standard of the country ("any", DE_autobahn, CN_expressway, KR_expressway, KR_urban, US_interstate; remembered, set it once - "any" can mistake one standard's dash ratio for another's); seconds of video to perceive |
+| Browse... | a video file or a folder of frames. If a config uses that video, it is selected; otherwise its first frame is shown and Start calibrates it from its first seconds (~1 min, below), then replays it from the start with that calibration. A failed calibration is reported with its conditions; no other scenario's calibration is used |
+| Auto-calibrate / Road / s | calibrate videos without a config (on by default; off: replay with the selected scenario's calibration); the road standard of the country ("any", DE_autobahn, CN_expressway, KR_expressway, KR_urban, US_interstate; remembered); seconds of video the scene logic runs over (default 120: it confirms the camera over cycles) |
 | Calibration conditions | progress, and every condition of every calibration source (why one was admitted or rejected) |
 | Start / Pause / Restart / Stop | replay control |
 | Image | the real video with YOLO tracks; the reconstruction is in the viewport (CCTV camera) |
@@ -26,22 +26,27 @@ The **CCTV Dual Tracking** window:
 
 ## Automatic calibration
 
-Starting a video that has no config runs `tools/calibrate_video.py` in its own process
-(`calibration.py`) while the replay already plays on the borrowed calibration:
+Starting a video that has no config runs `tools/scene_calibration.py` in its own
+process (`calibration.py`), the scene dynamic logic over the first N seconds (default
+120; `world/scene_logic.py`):
 
-1. perceive the first N seconds (yolo11s at 1280 px, ByteTrack, camera motion)
-2. select a calibration: this camera's stored calibration if the view is unchanged
-   (`data/calibrations/<camera id>/`, lane or track vanishing point) -> lane markings
-   (METRIC: dash period and lane width of a road standard, car box widths checked) ->
-   vanishing points (PROJECTIVE, not enough to place vehicles)
-3. METRIC: write `config/auto_<recording>.yaml` (camera, homography, the real lane
-   markings for the USD scene) and store a new lane-marking calibration under the camera id
+1. every pixel is an edge existence automaton: blurred Canny edges accumulate, and
+   whenever a pixel reaches 255 the sum is divided by 255 and what is below 0.2 is
+   dropped - passing vehicles go to the dynamic map (the road), static paint, rails and
+   signs stay (STATIC)
+2. at each such cycle the camera is estimated: vanishing point (rays through it carry
+   the most line evidence; Gaussian process, then deterministic refinement), the lines
+   through it on the road, their dashes, the road standard from the dash ratio, focal
+   length (lane width / dash period = the standard's), height (lane width)
+3. the calibration automaton: a first accepted estimate is TENTATIVE, a later cycle that
+   agrees confirms it (CALIBRATED, median of the agreeing estimates)
+4. write `config/auto_<recording>.yaml`: one camera for the Isaac scene and the world
+   model (`simulation.camera`, `mapping.calibration_points`), and the lane markings - the
+   paint among the lines (dashes, edge lines; not guard rails) on the road
 
-The extension then selects that config and restarts the replay on it at the same video
-time: the stage is rebuilt with the calibrated camera and lane markings, the world model
-uses the new homography. The video is from then on a scenario of its own. Without a
-METRIC calibration the replay stays on the borrowed one and the window says which
-conditions failed.
+The extension then selects that config and replays the video on it from the start.
+Without a calibration the window says why (the estimates' reasons). Road: the country's
+standard, or "any" (each estimate tries all and keeps the one most lines follow).
 
 A frame folder's frame rate is read from the file names when they carry the capture
 time (`<s>_<ns>_...`, TUMTraf); for video files from the container.

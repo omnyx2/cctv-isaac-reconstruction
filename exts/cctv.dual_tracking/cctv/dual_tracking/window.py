@@ -85,7 +85,7 @@ class ControlWindow:
                                     self._standard.model.add_item_changed_fn(lambda *_: _remember_standard(self.standards))
                                     ui.Label("s", width=10)
                                     self._seconds = ui.FloatField(width=40)
-                                    self._seconds.model.set_value(20.0)
+                                    self._seconds.model.set_value(120.0)    # the scene logic confirms over cycles
                                 self._calib_status = ui.Label("", height=18, word_wrap=True, visible=False)
                                 self._lanes_status = ui.Label("", height=18, word_wrap=True, visible=False)
                                 with ui.CollapsableFrame("Calibration conditions / lane markings", collapsed=True, height=0):

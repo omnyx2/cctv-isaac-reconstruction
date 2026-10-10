@@ -35,8 +35,13 @@ modes.png (empty black, candidate grey, static white, dynamic blue), calibration
 
 Usage:
     C:\\isaacsim\\python.bat tools/scene_calibration.py --video <file or frame folder> --out <folder>
-        [--standard DE_autobahn] [--drop 0.2] [--blur 9] [--thin-blur 3] [--config config/auto_<name>.yaml]
+        [--standard DE_autobahn | any | <names>] [--seconds 120] [--config config/auto_<name>.yaml]
+        [--log-prefix calib] [--drop 0.2] [--blur 9] [--thin-blur 3]
 --config writes a runnable scenario config (camera, calibration points, lane markings).
+--standard any (or several names): each estimate tries them and keeps the one most lines
+follow. --seconds: only the first seconds of the video (pass 1 keeps every frame's
+edges in memory). --log-prefix: every line as "[<prefix>] ..." (the Isaac extension
+follows these, exts/cctv.dual_tracking/cctv/dual_tracking/calibration.py).
 """
 
 import argparse
@@ -229,7 +234,7 @@ def write_config(path: Path, video: Path, fps: float, camera, markings, lane_lin
                     + yaml.safe_dump(config, sort_keys=False, default_flow_style=None), encoding="utf-8")
 
 
-def make_estimator(size, standard, rng, log, use_road=True, lines_from="static"):
+def make_estimator(size, standards, rng, log, use_road=True, lines_from="static"):
     w, h = size
     last = {}
 
@@ -244,12 +249,18 @@ def make_estimator(size, standard, rng, log, use_road=True, lines_from="static")
                 flags.append(dashed)
         est = {"vanishing_point": [round(float(vp_s[0]), 1), round(float(vp_s[1]), 1)],
                "lines": len(boundaries), "dashed": int(sum(flags)), "lane_lines": 0, "reasons": []}
-        try:
-            camera, metric, followers, _, _ = calibrate(tuple(vp_s), size, boundaries,
-                                                        [i for i, f in enumerate(flags) if f], standard)
-        except ValueError as e:
-            est.update(accepted=False, reasons=[str(e)[:120]])
+        tried, errors = [], []
+        for standard in standards:                   # the road standard most lines follow
+            try:
+                tried.append((standard, calibrate(tuple(vp_s), size, boundaries,
+                                                  [i for i, f in enumerate(flags) if f], standard)))
+            except ValueError as e:
+                errors.append(f"{standard.name}: {str(e)[:100]}")
+        if not tried:
+            est.update(accepted=False, reasons=errors[:1] if len(errors) == 1 else errors)
             return est, None
+        standard, (camera, metric, followers, _, _) = max(tried, key=lambda t: len(t[1][2]))
+        est["standard"] = standard.name
         est.update(focal_px=round(camera.focal_px, 1), height_m=round(camera.height_m, 3),
                    pitch_deg=round(math.degrees(camera.pitch_rad), 3), yaw_deg=round(math.degrees(camera.yaw_rad), 3),
                    hfov_deg=round(camera.hfov_deg, 2), lane_lines=len(followers),
@@ -266,7 +277,7 @@ def make_estimator(size, standard, rng, log, use_road=True, lines_from="static")
             reasons.append(f"lane widths disagree (cv {est['lane_width_cv']})")
         est.update(accepted=not reasons, reasons=reasons)
         return est, dict(camera=camera, vp=tuple(vp_s), lines=lines, boundaries=boundaries, flags=flags,
-                         followers=followers, road=road)
+                         followers=followers, road=road, standard=standard)
 
     def road_of(edges: EdgeExistence, thin: EdgeExistence):
         k = int(ROAD_MARGIN * w)                                                       # 2 (dilation on the GPU)
@@ -315,7 +326,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--video", required=True)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--standard", default="DE_autobahn", choices=sorted(ROAD_STANDARDS))
+    parser.add_argument("--standard", nargs="+", default=["DE_autobahn"],
+                        help=f"road standard(s), or any: {', '.join(sorted(ROAD_STANDARDS))}")
+    parser.add_argument("--seconds", type=float, default=0.0, help="only the first seconds of the video (0: all)")
+    parser.add_argument("--log-prefix", default="", help="prefix every output line with [<prefix>]")
     parser.add_argument("--drop", type=float, default=0.2)
     parser.add_argument("--blur", type=int, default=9)
     parser.add_argument("--thin-blur", type=int, default=3)
@@ -327,18 +341,28 @@ def main():
     parser.add_argument("--lines-from", choices=("static", "edgesum"), default="static",
                         help="image the lines through the vanishing point are found in (test)")
     args = parser.parse_args()
+    if args.log_prefix:
+        import builtins
+        tag, plain = f"[{args.log_prefix}]", builtins.print
+        builtins.print = lambda *a, **k: plain(tag, *a, **k)
+    names = sorted(ROAD_STANDARDS) if args.standard == ["any"] else args.standard
+    unknown = [n for n in names if n not in ROAD_STANDARDS]
+    if unknown:
+        parser.error(f"unknown road standard(s) {unknown}; known: {sorted(ROAD_STANDARDS)}")
+    standards = [ROAD_STANDARDS[n] for n in names]
     video, out = Path(expand(args.video)), Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     start = time.time()
 
     canny = tuple(args.canny) if args.canny else auto_canny(video, frame_paths(video))
     print(f"Canny thresholds {canny[0]:.0f} / {canny[1]:.0f}")
-    edges, size_hw, paths = all_edges(video, canny, 24)
+    max_frames = int(round(args.seconds * fps_of(video))) if args.seconds > 0 else 0
+    edges, size_hw, paths = all_edges(video, canny, 24, max_frames)
     h, w = size_hw
     gpu = Gpu(size_hw)
     wide = EdgeExistence(gpu.torch, size_hw, gpu.device, args.drop)
     thin = EdgeExistence(gpu.torch, size_hw, gpu.device, args.drop)
-    estimate, last = make_estimator((w, h), ROAD_STANDARDS[args.standard], np.random.default_rng(args.seed), print,
+    estimate, last = make_estimator((w, h), standards, np.random.default_rng(args.seed), print,
                                     use_road=not args.no_road, lines_from=args.lines_from)
     logic = CalibrationLogic(estimate, w)
     print(f"{len(edges)} frames {w}x{h}; edge existence and calibration automata:")
@@ -361,7 +385,8 @@ def main():
     print(f"  end (frame {wide.frames}): cycle {wide.cycles} -> {mode}")
 
     cam = logic.ctx.camera
-    result = {"mode": mode, "image_size": [w, h], "standard": args.standard, "cycles": wide.cycles,
+    standard = ((logic.ctx.accepted or logic.ctx.pool or [{}])[-1]).get("standard") or names[0]
+    result = {"mode": mode, "image_size": [w, h], "standard": standard, "cycles": wide.cycles,
               "edge_history": wide.history}
     if cam:
         result.update(focal_px=round(cam["focal_px"], 1), height_m=round(cam["height_m"], 3),
@@ -388,7 +413,7 @@ def main():
                 cv2.line(img, (x1, y1), (x2, y2), (0, 255, 0), 3)
             cv2.imwrite(str(out / "markings.png"), img)
             if args.config:
-                write_config(Path(args.config), video, fps_of(video), camera, markings, lane_x, args.standard,
+                write_config(Path(args.config), video, fps_of(video), camera, markings, lane_x, standard,
                              [f"Scene dynamic logic calibration ({mode}, {cam['estimates']} agreeing estimates)",
                               f"focal {camera.focal_px:.0f} px, height {camera.height_m:.2f} m, "
                               f"pitch {np.degrees(camera.pitch_rad):.2f} deg; {len(markings)} lane markings",
@@ -415,7 +440,7 @@ def main():
     if last.get("road") is not None:
         cv2.imwrite(str(out / "road.png"), last["road"] * 255)
         cv2.imwrite(str(out / "calibration.png"), draw(frame, last["camera"], last["vp"], last["lines"], last["boundaries"],
-                                                        last["flags"], last["followers"], ROAD_STANDARDS[args.standard]))
+                                                        last["flags"], last["followers"], last["standard"]))
     print(f"{mode}: {result.get('focal_px')} px, {result.get('height_m')} m in {time.time() - start:.0f} s -> {out}")
     return 0 if cam else 2
 
