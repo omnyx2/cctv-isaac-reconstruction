@@ -1,0 +1,122 @@
+{
+ "r09_s10/s040_camera_basler_north_50mm": {
+  "vanishing_point": [
+   545.47,
+   56.39
+  ],
+  "focal_px": 8393.4,
+  "height_m": 8.327,
+  "pitch_deg": 3.706,
+  "lane_lines": 5,
+  "error": null,
+  "err_focal_pct": -6.95,
+  "err_height_pct": 0.39,
+  "err_pitch_deg": 0.202
+ },
+ "r09_s09/s050_camera_basler_south_50mm": {
+  "vanishing_point": [
+   1129.53,
+   -51.48
+  ],
+  "focal_px": 8604.2,
+  "height_m": 8.071,
+  "pitch_deg": 4.33,
+  "lane_lines": 5,
+  "error": null,
+  "err_focal_pct": -3.33,
+  "err_height_pct": -1.27,
+  "err_pitch_deg": 0.127
+ },
+ "r09_s12/s050_camera_basler_south_50mm": {
+  "vanishing_point": [
+   1129.42,
+   -41.51
+  ],
+  "focal_px": 8829.0,
+  "height_m": 8.101,
+  "pitch_deg": 4.156,
+  "lane_lines": 4,
+  "error": null,
+  "err_focal_pct": -0.4,
+  "err_height_pct": -1.59,
+  "err_pitch_deg": -0.068
+ },
+ "r09_s06/s050_camera_basler_south_50mm": {
+  "vanishing_point": [
+   1088.0,
+   12.41
+  ],
+  "focal_px": 576.0,
+  "height_m": 41.038,
+  "pitch_deg": 45.571,
+  "lane_lines": 18,
+  "error": null,
+  "err_focal_pct": -93.52,
+  "err_height_pct": 401.79,
+  "err_pitch_deg": 41.364
+ },
+ "r09_s01/s040_camera_basler_north_16mm": {
+  "vanishing_point": [
+   432.35,
+   -38.99
+  ],
+  "focal_px": 2765.0,
+  "height_m": 8.417,
+  "pitch_deg": 13.012,
+  "lane_lines": 8,
+  "error": null,
+  "err_focal_pct": -0.35,
+  "err_height_pct": 0.47,
+  "err_pitch_deg": -0.046
+ },
+ "r09_s03/s040_camera_basler_north_16mm": {
+  "vanishing_point": [
+   440.19,
+   -33.88
+  ],
+  "focal_px": 2792.8,
+  "height_m": 8.134,
+  "pitch_deg": 12.788,
+  "lane_lines": 6,
+  "error": null,
+  "err_focal_pct": 0.58,
+  "err_height_pct": -3.04,
+  "err_pitch_deg": -0.261
+ },
+ "r09_s09/s040_camera_basler_north_16mm": {
+  "vanishing_point": [
+   453.1,
+   -24.63
+  ],
+  "focal_px": 2553.7,
+  "height_m": 8.281,
+  "pitch_deg": 13.745,
+  "lane_lines": 13,
+  "error": null,
+  "err_focal_pct": -8.06,
+  "err_height_pct": -1.4,
+  "err_pitch_deg": 0.692
+ },
+ "r09_s12/s040_camera_basler_north_16mm": {
+  "vanishing_point": [
+   523.72,
+   27.12
+  ],
+  "focal_px": null,
+  "height_m": null,
+  "pitch_deg": null,
+  "lane_lines": null,
+  "error": "fewer than 2 lines follow DE_autobahn (dash ratios [], standard 0.333)"
+ },
+ "r09_s05/s050_camera_basler_south_16mm": {
+  "vanishing_point": [
+   932.97,
+   -28.75
+  ],
+  "focal_px": 2426.9,
+  "height_m": 8.737,
+  "pitch_deg": 14.525,
+  "lane_lines": 6,
+  "error": null
+ }
+}
