@@ -39,11 +39,19 @@ class CameraStabilizer:
         self._ref_keypoints = None
         self._ref_descriptors = None
         self._last = np.eye(3)
+        self.static_mask: Optional[np.ndarray] = None   # full-res, nonzero where the scene is static
+
+    def set_static_mask(self, mask: Optional[np.ndarray]):
+        """Features only where the scene is static (e.g. the static edges of
+        world/scene_logic.py, dilated): traffic is not matched even without vehicle boxes."""
+        self.static_mask = None if mask is None else (np.asarray(mask) > 0).astype(np.uint8) * 255
 
     def _features(self, frame: np.ndarray, exclude_boxes: Optional[List[Tuple]] = None):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         gray = cv2.resize(gray, None, fx=self.scale, fy=self.scale)
         mask = np.full(gray.shape, 255, np.uint8)
+        if self.static_mask is not None:
+            mask = cv2.resize(self.static_mask, (gray.shape[1], gray.shape[0]), interpolation=cv2.INTER_NEAREST)
         for x1, y1, x2, y2 in exclude_boxes or []:
             mask[int(y1 * self.scale):int(y2 * self.scale) + 1,
                  int(x1 * self.scale):int(x2 * self.scale) + 1] = 0
