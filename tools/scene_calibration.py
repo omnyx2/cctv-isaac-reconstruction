@@ -4,15 +4,17 @@ Runs the hybrid program of world/scene_logic.py: per frame the edge existence fl
 every pixel, at every renormalization the jump, and then one step of the calibration
 automaton with an estimate from the maps of that moment:
 
-  1. vanishing point of the static edges and, independently, of the dynamic map
-     (vehicle streaks run along the road too) - tools/vp_gaussian_process.py,
+  1. vanishing point candidates of the static edges (tools/vp_gaussian_process.py): the
+     strongest hill and those within TIE_LOG of it - in some scenes the ray signal hardly
+     separates them (TUM s06: queues and a planted median); each is tried in 2-4 and the
+     one with an accepted camera and the most lines following the standard wins,
   2. the road: where the dynamic map has mass (dilated); only lines on it are read,
   3. lines through the static vanishing point, their dashes on the thin static edges,
      road standard, focal length, height - tools/calibrate_from_vp.py,
   4. accepted if field of view, height and lane widths are plausible and at least two
      lines follow the standard; confirmed by the automaton when another cycle agrees.
-     The dynamic vanishing point is recorded, not a check: queues and the other
-     carriageway pull it away (TUM s03).
+     (A vanishing point of the dynamic map is no check: queues and the other
+     carriageway pull it away, TUM s03.)
 
 Two edge existence automata run side by side: a wide blur for the vanishing point and
 the road, a thin one for the dash ends.
@@ -44,13 +46,14 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from cctv_utils.paths import expand  # noqa: E402
 from tools.calibrate_from_vp import calibrate, dashes_along, draw, lines_through, tum_reference  # noqa: E402
 from tools.edge_accumulate import BATCH, Gpu, all_edges, auto_canny, frame_paths, read_frame  # noqa: E402
-from tools.vp_gaussian_process import find_vanishing_point  # noqa: E402
+from tools.vp_gaussian_process import find_vanishing_points  # noqa: E402
 from world.context.lane_metric import FOCAL_RANGE  # noqa: E402
 from world.context.paint import ROAD_STANDARDS  # noqa: E402
 from world.scene_logic import DYNAMIC, STATIC, CalibrationLogic, EdgeExistence, edge_automaton  # noqa: E402
 
 ROAD_LEVEL = 0.03            # dynamic map (0..1) above this: something moved there
 ROAD_MARGIN = 0.03           # x image width: the road mask is widened by this (edge lines, kerbs)
+TIE_LOG = 0.02               # hills whose log signal is within this of the strongest are candidates
 HFOV = (3.0, 120.0)
 FOCAL_EDGE = 1.05            # a focal within 5 % of the search range's ends: the search found no optimum
 HEIGHT = (3.0, 50.0)
@@ -61,18 +64,9 @@ def make_estimator(size, standard, rng, log, use_road=True, lines_from="static")
     w, h = size
     last = {}
 
-    def estimate(edges: EdgeExistence, thin: EdgeExistence):
-        t = time.time()
-        static, dynamic = edges.static_map(), edges.dynamic_map()
-        vp_s, _ = find_vanishing_point(static, rng)                                   # 1
-        vp_d, _ = find_vanishing_point(dynamic, rng) if dynamic.max() > 0 else (None, None)
-        k = int(ROAD_MARGIN * w)                                                       # 2 (dilation on the GPU)
-        moved = (edges.d > ROAD_LEVEL * edges.d.max()).float()[None, None]
-        road = F.max_pool2d(moved, 2 * k + 1, stride=1, padding=k)[0, 0].byte().cpu().numpy()
-        road = road if use_road else np.ones_like(road)
-        thin_static = ((thin.modes() == STATIC) & (road > 0)).astype(np.uint8) * 255
-        line_image = static if lines_from == "static" else (edges.s / edges.s.max()).cpu().numpy()
-        lines, _ = lines_through(tuple(vp_s), line_image * (road > 0))                 # 3
+    def estimate_at(vp_s, static, thin_static, road, cycle):
+        """Steps 3-4 for one vanishing point: (estimate dict, drawing parts)."""
+        lines, _ = lines_through(tuple(vp_s), static * (road > 0))                    # 3
         boundaries, flags = [], []
         for angle, _ in sorted(lines):
             seg, dashed = dashes_along(tuple(vp_s), angle, thin_static)
@@ -80,15 +74,13 @@ def make_estimator(size, standard, rng, log, use_road=True, lines_from="static")
                 boundaries.append(seg)
                 flags.append(dashed)
         est = {"vanishing_point": [round(float(vp_s[0]), 1), round(float(vp_s[1]), 1)],
-               "vanishing_point_dynamic": None if vp_d is None else [round(float(vp_d[0]), 1), round(float(vp_d[1]), 1)],
-               "lines": len(boundaries), "dashed": int(sum(flags)), "reasons": []}
+               "lines": len(boundaries), "dashed": int(sum(flags)), "lane_lines": 0, "reasons": []}
         try:
             camera, metric, followers, _, _ = calibrate(tuple(vp_s), size, boundaries,
                                                         [i for i, f in enumerate(flags) if f], standard)
         except ValueError as e:
             est.update(accepted=False, reasons=[str(e)[:120]])
-            log(f"    cycle {edges.cycles}: no estimate ({str(e)[:70]}) [{time.time() - t:.0f} s]")
-            return est
+            return est, None
         est.update(focal_px=round(camera.focal_px, 1), height_m=round(camera.height_m, 3),
                    pitch_deg=round(math.degrees(camera.pitch_rad), 3), yaw_deg=round(math.degrees(camera.yaw_rad), 3),
                    hfov_deg=round(camera.hfov_deg, 2), lane_lines=len(followers),
@@ -104,11 +96,33 @@ def make_estimator(size, standard, rng, log, use_road=True, lines_from="static")
         if not (est["lane_width_cv"] <= LANE_WIDTH_CV):
             reasons.append(f"lane widths disagree (cv {est['lane_width_cv']})")
         est.update(accepted=not reasons, reasons=reasons)
-        last.update(camera=camera, vp=tuple(vp_s), lines=lines, boundaries=boundaries, flags=flags,
-                    followers=followers, road=road)
-        log(f"    cycle {edges.cycles}: vp {est['vanishing_point']} / dynamic {est['vanishing_point_dynamic']}, "
-            f"focal {camera.focal_px:.0f}, height {camera.height_m:.2f} -> "
-            f"{'accepted' if not reasons else 'rejected: ' + '; '.join(reasons)} [{time.time() - t:.0f} s]")
+        return est, dict(camera=camera, vp=tuple(vp_s), lines=lines, boundaries=boundaries, flags=flags,
+                         followers=followers, road=road)
+
+    def estimate(edges: EdgeExistence, thin: EdgeExistence):
+        t = time.time()
+        static = edges.static_map()
+        hills = find_vanishing_points(static, rng)                                     # 1
+        k = int(ROAD_MARGIN * w)                                                       # 2 (dilation on the GPU)
+        moved = (edges.d > ROAD_LEVEL * edges.d.max()).float()[None, None]
+        road = F.max_pool2d(moved, 2 * k + 1, stride=1, padding=k)[0, 0].byte().cpu().numpy()
+        road = road if use_road else np.ones_like(road)
+        thin_static = ((thin.modes() == STATIC) & (road > 0)).astype(np.uint8) * 255
+        tried = []
+        for vp_s, value in hills:
+            if value < hills[0][1] - TIE_LOG:
+                break
+            est, parts = estimate_at(vp_s, static, thin_static, road, edges.cycles)
+            est["log_signal"] = round(value, 4)
+            tried.append((est, parts))
+        est, parts = max(tried, key=lambda ep: (ep[0]["accepted"], ep[0]["lane_lines"], ep[0]["log_signal"]))
+        est["candidates"] = [{"vanishing_point": e["vanishing_point"], "log_signal": e["log_signal"],
+                              "lane_lines": e["lane_lines"], "accepted": e["accepted"]} for e, _ in tried]
+        if parts:
+            last.update(parts)
+        verdict = "accepted" if est["accepted"] else "rejected: " + "; ".join(est["reasons"])
+        log(f"    cycle {edges.cycles}: vp {est['vanishing_point']} ({len(tried)} candidates), "
+            f"focal {est.get('focal_px')}, height {est.get('height_m')} -> {verdict} [{time.time() - t:.0f} s]")
         return est
 
     return estimate, last
@@ -169,7 +183,7 @@ def main():
         result.update(focal_px=round(cam["focal_px"], 1), height_m=round(cam["height_m"], 3),
                       pitch_deg=round(cam["pitch_deg"], 3), yaw_deg=round(cam["yaw_deg"], 3),
                       vanishing_point=cam["vanishing_point"], estimates=cam["estimates"],
-                      lane_lines=(logic.ctx.accepted[-1] or {}).get("lane_lines"))
+                      lane_lines=((logic.ctx.accepted or logic.ctx.pool or [{}])[-1]).get("lane_lines"))
     else:
         result["error"] = "not calibrated: " + "; ".join((logic.ctx.estimate or {}).get("reasons", []) or ["no estimate"])
     ref = tum_reference(out.name)

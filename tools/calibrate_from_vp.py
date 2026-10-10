@@ -108,6 +108,9 @@ def dashes_along(vp, angle_deg, static: np.ndarray):
 
 FOCAL_GRID = 4000            # focal candidates (log-spaced over FOCAL_RANGE), evaluated at once on the GPU
 FOCAL_REFINE = 400           # ... then this many between the best one's neighbours
+PLAUSIBLE_HEIGHT = (3.0, 50.0)   # m: only focals whose camera stands this high are candidates
+PLAUSIBLE_HFOV = (3.0, 120.0)    # deg: ... and sees this wide (lane width / dash period = standard
+                                 # holds again at the shortest focals: TUM s09 south, 5 of 6 cycles)
 
 
 def ground_maps(vp, focals: torch.Tensor, size):
@@ -140,18 +143,20 @@ def to_ground(H, pts: torch.Tensor):
 
 
 def lane_and_period(vp, focals: torch.Tensor, size, boundaries, dashed):
-    """measure()'s lane_width and dash_period (height 1) for every focal at once."""
+    """measure()'s lane_width and dash_period (height 1) for every focal at once. Medians
+    as numpy's (the mean of the middle two of an even count: torch.median takes the lower
+    one, which let two copies of one line stay unmerged and made the lane width ~1/20)."""
     dev = focals.device
     H = ground_maps(vp, focals, size)
     nan = torch.tensor(float("nan"), device=dev, dtype=torch.float64)
 
     def positions(bs):                                  # median lateral position of each boundary (F, B)
         return torch.stack([to_ground(H, torch.tensor(np.vstack([b[:, :2], b[:, 2:]]), device=dev))[..., 0]
-                            .median(1).values for b in bs], 1)
+                            .quantile(0.5, dim=1) for b in bs], 1)
 
     xs = positions(dashed).sort(1).values                                        # lane_widths()
     spacing = xs[:, 1:] - xs[:, :-1]
-    med = spacing.median(1).values
+    med = spacing.quantile(0.5, dim=1)
     last, widths = xs[:, 0], []
     for j in range(1, xs.shape[1]):
         keep = xs[:, j] - last >= DUPLICATE_LINE * med
@@ -161,13 +166,13 @@ def lane_and_period(vp, focals: torch.Tensor, size, boundaries, dashed):
     base = torch.nan_to_num(widths, nan=float("inf")).min(1).values
     widths = widths / torch.clamp(torch.round(widths / base[:, None]), min=1)
     n = (~torch.isnan(widths)).sum(1)
-    lane = torch.nanmedian(widths, 1).values
+    lane = torch.nanquantile(widths, 0.5, dim=1)
     xs_all = positions(boundaries).sort(1).values                                # fewer than 2: all boundaries
     sp_all = xs_all[:, 1:] - xs_all[:, :-1]
     if sp_all.shape[1]:
         q = torch.quantile(sp_all, 0.25, dim=1)[:, None]
         band = torch.where((sp_all >= LANE_WIDTH_BAND[0] * q) & (sp_all <= LANE_WIDTH_BAND[1] * q), sp_all, nan)
-        lane = torch.where(n >= 2, lane, torch.nanmedian(band, 1).values)
+        lane = torch.where(n >= 2, lane, torch.nanquantile(band, 0.5, dim=1))
 
     periods = []                                                                 # dash_period_m()
     for b in dashed:
@@ -177,11 +182,17 @@ def lane_and_period(vp, focals: torch.Tensor, size, boundaries, dashed):
             continue
         y1 = to_ground(H, torch.tensor(b[:, :2], device=dev))[..., 1]
         y2 = to_ground(H, torch.tensor(b[:, 2:], device=dev))[..., 1]
-        starts = torch.minimum(y1, y2).sort(1).values
+        starts = torch.minimum(y1, y2)
+        starts = torch.where(torch.isfinite(starts), starts, nan).sort(1).values     # NaN sorts last
         d = starts[:, 1:] - starts[:, :-1]
-        base = torch.quantile(d, 0.25, dim=1)[:, None]
-        periods.append((d / torch.clamp(torch.round(d / base.clamp_min(1e-9)), min=1)).median(1).values)
-    period = torch.stack(periods, 1).median(1).values if periods else torch.full_like(focals, float("nan"))
+        base = torch.nanquantile(d, 0.25, dim=1)[:, None]
+        folded = d / torch.clamp(torch.round(d / base.clamp_min(1e-9)), min=1)
+        periods.append(torch.nanquantile(folded, 0.5, dim=1))
+    if periods:                                     # boundaries without a finite period are left out (as measure())
+        period = torch.stack(periods, 1)
+        period = torch.nanquantile(torch.where(torch.isfinite(period), period, nan), 0.5, dim=1)
+    else:
+        period = torch.full_like(focals, float("nan"))
     return lane, period
 
 
@@ -206,7 +217,12 @@ def calibrate(vp, size, boundaries, dashed_idx, standard):
     def mismatch(focals: torch.Tensor) -> torch.Tensor:
         lane, period = lane_and_period(vp, focals, size, boundaries, dashed)
         err = (torch.log(lane / period) - target).abs()
-        return torch.where(torch.isfinite(err) & (period > 0) & (lane > 0), err, torch.full_like(err, float("inf")))
+        height = standard.lane_width_m / lane
+        hfov = torch.rad2deg(2 * torch.atan(size[0] / 2 / focals))
+        plausible = ((height >= PLAUSIBLE_HEIGHT[0]) & (height <= PLAUSIBLE_HEIGHT[1])
+                     & (hfov >= PLAUSIBLE_HFOV[0]) & (hfov <= PLAUSIBLE_HFOV[1]))
+        ok = torch.isfinite(err) & (period > 0) & (lane > 0) & plausible
+        return torch.where(ok, err, torch.full_like(err, float("inf")))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     focals = torch.logspace(math.log10(FOCAL_RANGE[0] * size[0]), math.log10(FOCAL_RANGE[1] * size[0]), FOCAL_GRID,
@@ -214,7 +230,7 @@ def calibrate(vp, size, boundaries, dashed_idx, standard):
     errs = mismatch(focals)
     k = int(torch.argmin(errs))
     if not torch.isfinite(errs[k]):
-        raise ValueError("no focal length gives a lane width and a dash period")
+        raise ValueError("no focal length gives a plausible camera (height, field of view)")
     fine = torch.linspace(float(focals[max(k - 1, 0)]), float(focals[min(k + 1, FOCAL_GRID - 1)]), FOCAL_REFINE,
                           device=device, dtype=torch.float64)
     f = float(fine[torch.argmin(mismatch(fine))])

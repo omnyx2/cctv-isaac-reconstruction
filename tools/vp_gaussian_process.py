@@ -161,7 +161,11 @@ def optimize(signal: RaySignal, lo: np.ndarray, hi: np.ndarray, start: int, iter
 
     gen = torch.Generator(device=DEVICE)
     gen.manual_seed(int(rng.integers(2 ** 31)))
-    u = torch.rand((start, 2), generator=gen, device=DEVICE, dtype=torch.float64)
+    nx = max(1, int(round(math.sqrt(start * 1.6))))              # start points: a regular grid covering the box
+    ny = max(1, int(math.ceil(start / nx)))                       # (random ones can miss a narrow hill)
+    gx, gy = torch.meshgrid((torch.arange(nx, device=DEVICE, dtype=torch.float64) + 0.5) / nx,
+                            (torch.arange(ny, device=DEVICE, dtype=torch.float64) + 0.5) / ny, indexing="xy")
+    u = torch.stack([gx.ravel(), gy.ravel()], 1)
     y = evaluate(u)
     gp = GP()
     for _ in range(iterations):
@@ -180,6 +184,13 @@ def optimize(signal: RaySignal, lo: np.ndarray, hi: np.ndarray, start: int, iter
 def find_vanishing_point(image: np.ndarray, rng, domain=DOMAIN):
     """Stages 1 and 2 without pictures: the vanishing point (full-resolution px) and
     its log signal at stage 2."""
+    return find_vanishing_points(image, rng, domain)[0]
+
+
+def find_vanishing_points(image: np.ndarray, rng, domain=DOMAIN):
+    """Every hill of stage 1, refined at stage 2: [(point, log signal)], strongest first.
+    In some scenes hills are near ties (TUM s06: 14.605 / 14.602 / 14.596) - the caller
+    decides among them with other evidence."""
     h, w = image.shape
     s1 = RaySignal(image, **{k: STAGES[0][k] for k in ("scale", "sigma", "side", "step_deg")})
     lo = np.array([domain[0][0] * w, domain[1][0] * h])
@@ -197,12 +208,37 @@ def find_vanishing_point(image: np.ndarray, rng, domain=DOMAIN):
             break
     s2 = RaySignal(image, **{k: STAGES[1][k] for k in ("scale", "sigma", "side", "step_deg")})
     half = FINE_HALF_WIDTH * w
-    best = None
+    found = []
     for c in hills:
         pts2, y2, _, _ = optimize(s2, c - half, c + half, STAGES[1]["start"], STAGES[1]["iterations"], rng)
-        if best is None or y2.max() > best[1]:
-            best = (pts2[np.argmax(y2)], float(y2.max()))
-    return best
+        found.append(refine(s2, pts2[np.argmax(y2)]))     # each hill refined: compared at their true peaks
+    return sorted(found, key=lambda f: -f[1])
+
+
+REFINE = ((32.0, 4.0), (4.0, 1.0))      # deterministic grids after the GP: (half width, step) px
+
+
+def refine(signal: RaySignal, p0: np.ndarray):
+    """The GP decides which hill; the point on it is found deterministically: a grid of
+    the signal around it, then a finer one around its best, then a quadratic fit through
+    the best and its neighbours (sub-pixel). Removes the scatter of the GP's random
+    candidates from the result."""
+    p = np.asarray(p0, float)
+    for half, step in REFINE:
+        offs = np.arange(-half, half + step / 2, step)
+        gx, gy = np.meshgrid(p[0] + offs, p[1] + offs)
+        pts = torch.tensor(np.c_[gx.ravel(), gy.ravel()], device=DEVICE).float()
+        v = torch.cat([signal(c) for c in torch.split(pts, 16)]).cpu().numpy().reshape(gx.shape)
+        i, j = np.unravel_index(np.argmax(v), v.shape)
+        p = np.array([gx[i, j], gy[i, j]])
+        if 0 < i < v.shape[0] - 1 and 0 < j < v.shape[1] - 1:
+            dx = 0.5 * (v[i, j - 1] - v[i, j + 1]) / (v[i, j - 1] - 2 * v[i, j] + v[i, j + 1] + 1e-12)
+            dy = 0.5 * (v[i - 1, j] - v[i + 1, j]) / (v[i - 1, j] - 2 * v[i, j] + v[i + 1, j] + 1e-12)
+            sub_px = np.clip([dx, dy], -0.5, 0.5) * step
+        else:
+            sub_px = np.zeros(2)
+    p = p + sub_px
+    return p, float(np.log(float(signal(torch.tensor(p[None], device=DEVICE).float())[0]) + 1e-9))
 
 
 # ---------------------------------------------------------------- pictures

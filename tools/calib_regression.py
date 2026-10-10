@@ -56,7 +56,7 @@ def result_of(out: Path) -> dict:
     if not path.exists():
         return {"error": "no calibration.json"}
     c = json.loads(path.read_text())
-    row = {k: c.get(k) for k in ("vanishing_point", "focal_px", "height_m", "pitch_deg", "lane_lines", "error")}
+    row = {k: c.get(k) for k in ("mode", "vanishing_point", "focal_px", "height_m", "pitch_deg", "lane_lines", "error")}
     ref = c.get("reference")
     if ref and c.get("focal_px"):
         row["err_focal_pct"] = round((c["focal_px"] / ref["focal_px"] - 1) * 100, 2)
@@ -68,8 +68,9 @@ def result_of(out: Path) -> dict:
 def fmt(row: dict) -> str:
     if not row or row.get("error") or row.get("focal_px") is None:
         return f"FAIL ({(row or {}).get('error', '')[:40]})"
+    mark = "?" if row.get("mode") == "tentative" else " "        # tentative: not confirmed by a second cycle
     if "err_focal_pct" in row:
-        return f"f {row['err_focal_pct']:+6.1f}%  h {row['err_height_pct']:+6.1f}%  pitch {row['err_pitch_deg']:+5.2f}"
+        return f"f {row['err_focal_pct']:+6.1f}%  h {row['err_height_pct']:+6.1f}%  pitch {row['err_pitch_deg']:+5.2f}{mark}"
     return f"f {row['focal_px']:.0f}px h {row['height_m']:.2f}m (no reference)"
 
 

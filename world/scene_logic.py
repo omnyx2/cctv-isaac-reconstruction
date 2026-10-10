@@ -24,16 +24,20 @@ calibration      one automaton for the camera, stepped at every renormalization
 
   mode ACCUMULATING    no static map yet
   mode SEARCHING       camera := none            estimate each cycle
-  mode TENTATIVE       camera := last accepted estimate (a hypothesis)
+  mode TENTATIVE       pool := accepted estimates; camera := the one most others agree with
   mode CALIBRATED      camera := median of the agreeing accepted estimates
 
   ACCUMULATING -> SEARCHING   ?enough static edges
-  SEARCHING    -> TENTATIVE   ?estimate accepted ; camera := estimate
-  TENTATIVE    -> CALIBRATED  ?accepted & agrees with camera ; camera := median
-  TENTATIVE    -> TENTATIVE   ?accepted & disagrees ; camera := estimate
+  SEARCHING    -> TENTATIVE   ?estimate accepted ; pool := {estimate}
+  TENTATIVE    -> CALIBRATED  ?accepted & agrees with one in the pool ; camera := median of those agreeing
+  TENTATIVE    -> TENTATIVE   ?accepted & agrees with none ; pool := pool + estimate
   CALIBRATED   -> CALIBRATED  ?accepted & agrees ; camera := median
-  CALIBRATED   -> TENTATIVE   ?accepted & disagrees DRIFT_CYCLES times in a row ; camera := estimate
+  CALIBRATED   -> TENTATIVE   ?accepted & disagrees DRIFT_CYCLES times in a row ; pool := those
                               (the camera moved)
+
+  A tentative camera is not replaced by every new estimate that disagrees (TUM s06: the
+  last cycle's wrong estimate became the result) - the estimates are pooled until two
+  agree.
 
   An estimate is accepted when the camera it implies is plausible (field of view,
   height, lane widths); it is confirmed by another cycle's estimate that agrees - the
@@ -129,7 +133,7 @@ class EdgeExistence:
 ACCUMULATING, SEARCHING, TENTATIVE, CALIBRATED = "accumulating", "searching", "tentative", "calibrated"
 MIN_STATIC = 0.002          # fraction of static pixels before an estimate is tried
 DRIFT_CYCLES = 2            # disagreeing accepted estimates in a row: the camera moved
-AGREE_FOCAL = 0.10          # an estimate agrees with the camera: focal within 10 %,
+AGREE_FOCAL = 0.15          # an estimate agrees with another: focal within 15 % (cycles scatter ~6 %),
 AGREE_VP_PX = 0.02          # ... vanishing point within 2 % of the image width
 
 
@@ -142,6 +146,8 @@ class CalibrationContext:
     agrees: bool = False                     # ... and agrees with the camera
     accepted: List[dict] = field(default_factory=list)
     camera: Optional[dict] = None
+    pool: List[dict] = field(default_factory=list)          # TENTATIVE: accepted estimates, none agreeing yet
+    disagreeing: List[dict] = field(default_factory=list)   # CALIBRATED: the disagreeing ones in a row
     disagree: int = 0
     width: int = 1920
 
@@ -159,12 +165,36 @@ def _median_camera(estimates: List[dict]) -> dict:
     return cam
 
 
-def _start(ctx):                                  # camera := this estimate (tentative)
-    ctx.accepted, ctx.camera, ctx.disagree = [ctx.estimate], _median_camera([ctx.estimate]), 0
+def _most_agreed(pool: List[dict], width: int) -> dict:
+    """The pooled estimate most others agree with (ties: the earliest)."""
+    return max(pool, key=lambda e: sum(_agree(e, o, width) for o in pool))
+
+
+def _pool(ctx):                                   # TENTATIVE: pool the estimate
+    ctx.pool = ctx.pool + [ctx.estimate]
+    ctx.accepted, ctx.camera, ctx.disagree = [], _median_camera([_most_agreed(ctx.pool, ctx.width)]), 0
+
+
+def _start(ctx):                                  # into TENTATIVE: a new pool
+    ctx.pool = []
+    _pool(ctx)
+
+
+def _restart(ctx):                                # CALIBRATED -> TENTATIVE: the disagreeing ones are the pool
+    ctx.pool = list(ctx.disagreeing)
+    ctx.disagreeing = []
+    _pool(ctx)
+
+
+def _confirm(ctx):                                # TENTATIVE -> CALIBRATED: those agreeing with the estimate
+    ctx.accepted = [e for e in ctx.pool if _agree(ctx.estimate, e, ctx.width)] + [ctx.estimate]
+    ctx.pool, ctx.disagreeing = [], []
+    ctx.camera, ctx.disagree = _median_camera(ctx.accepted), 0
 
 
 def _add(ctx):                                    # camera := median of the agreeing estimates
     ctx.accepted.append(ctx.estimate)
+    ctx.disagreeing = []
     ctx.camera, ctx.disagree = _median_camera(ctx.accepted), 0
 
 
@@ -174,21 +204,21 @@ def calibration_automaton() -> HybridAutomaton:
     return HybridAutomaton("calibration", {
         ACCUMULATING: Flow("camera := none", "no static map"),
         SEARCHING: Flow("camera := none; estimate each cycle"),
-        TENTATIVE: Flow("camera := the last accepted estimate"),
+        TENTATIVE: Flow("pool of accepted estimates; camera := the one most others agree with"),
         CALIBRATED: Flow("camera := median(agreeing accepted estimates)"),
     }, ACCUMULATING, [
         Transition(ACCUMULATING, SEARCHING, lambda c: c.static_fraction >= MIN_STATIC,
                    guard_text=f"static pixels >= {MIN_STATIC:.1%}"),
         Transition(SEARCHING, TENTATIVE, lambda c: c.ok, reset=_start, guard_text="estimate accepted",
-                   reset_text="camera := estimate"),
-        Transition(TENTATIVE, CALIBRATED, lambda c: c.ok and c.agrees, reset=_add,
-                   guard_text=f"accepted & agrees (focal {AGREE_FOCAL:.0%}, vp {AGREE_VP_PX:.0%} w)",
-                   reset_text="camera := median"),
-        Transition(TENTATIVE, TENTATIVE, lambda c: c.ok and not c.agrees, reset=_start,
-                   guard_text="accepted & disagrees", reset_text="camera := estimate"),
+                   reset_text="pool := {estimate}"),
+        Transition(TENTATIVE, CALIBRATED, lambda c: c.ok and c.agrees, reset=_confirm,
+                   guard_text=f"accepted & agrees with one in the pool (focal {AGREE_FOCAL:.0%}, vp {AGREE_VP_PX:.0%} w)",
+                   reset_text="camera := median of the agreeing"),
+        Transition(TENTATIVE, TENTATIVE, lambda c: c.ok and not c.agrees, reset=_pool,
+                   guard_text="accepted & agrees with none", reset_text="pool := pool + estimate"),
         Transition(CALIBRATED, TENTATIVE, lambda c: c.ok and not c.agrees and c.disagree >= DRIFT_CYCLES,
-                   reset=_start, guard_text=f"accepted & disagrees {DRIFT_CYCLES} cycles in a row (camera moved)",
-                   reset_text="camera := estimate"),
+                   reset=_restart, guard_text=f"accepted & disagrees {DRIFT_CYCLES} cycles in a row (camera moved)",
+                   reset_text="pool := the disagreeing"),
         Transition(CALIBRATED, CALIBRATED, lambda c: c.ok and c.agrees, reset=_add,
                    guard_text="accepted & agrees", reset_text="camera := median"),
     ])
@@ -212,9 +242,13 @@ class CalibrationLogic:
         c.static_fraction = edges.history[-1]["static"] if edges.history else 0.0
         c.estimate = self.estimate(edges, edges_thin) if c.static_fraction >= MIN_STATIC else None
         c.ok = bool(c.estimate and c.estimate.get("accepted"))
-        c.agrees = bool(c.ok and c.camera and _agree(c.estimate, c.camera, c.width))
-        if c.ok and c.camera and not c.agrees:
+        if self.mode == TENTATIVE:                                           # agrees with one in the pool
+            c.agrees = bool(c.ok and any(_agree(c.estimate, e, c.width) for e in c.pool))
+        else:
+            c.agrees = bool(c.ok and c.camera and _agree(c.estimate, c.camera, c.width))
+        if self.mode == CALIBRATED and c.ok and not c.agrees:
             c.disagree += 1
+            c.disagreeing.append(c.estimate)
         for _ in range(3):                                                   # jump*
             t = self.automaton.enabled(self.mode, c)
             if t is None:
