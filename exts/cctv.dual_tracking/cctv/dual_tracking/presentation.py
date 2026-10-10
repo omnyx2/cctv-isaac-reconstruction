@@ -97,7 +97,7 @@ def apply_layout(show_vlm: bool = True, clean: bool = True, hide_menu: bool = Fa
     missing = [t for t, w in zip((VIEWPORT,) + OURS, (viewport, tracking, vlm, timeline)) if w is None]
     if viewport is None:
         return missing
-    keep = {VIEWPORT, *OURS}
+    keep = {VIEWPORT, *OURS, "CCTV Setup"}      # the setup window floats, never hidden
     for window in ui.Workspace.get_windows():
         title = getattr(window, "title", "")
         if title and title not in keep and getattr(window, "visible", False):

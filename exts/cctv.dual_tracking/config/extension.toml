@@ -1,5 +1,5 @@
 [package]
-version = "0.2.0"
+version = "0.3.0"
 title = "CCTV Dual Tracking"
 description = "Pick a raw CCTV video (or frame folder) and watch it reconstructed live in Isaac Sim: YOLO + ByteTrack tracking, world model, bicycle-model driving, optional VLM scene analysis."
 category = "Simulation"
@@ -20,6 +20,13 @@ changelog = "docs/CHANGELOG.md"
 name = "cctv.dual_tracking"
 
 [settings]
+# Persistent (CCTV Setup window): datasets folder, YOLO interpreter, layout at startup
+persistent.exts."cctv.dual_tracking".datasets_root = ""
+persistent.exts."cctv.dual_tracking".perception_python = ""
+persistent.exts."cctv.dual_tracking".layout_on_start = true
+persistent.exts."cctv.dual_tracking".setup_ok = false
+# Scenario selected and previewed at startup (project-relative)
+exts."cctv.dual_tracking".default_config = "config/tum_r09_s03_north50.yaml"
 # Project directory (configs, models, perception/world/simulation packages).
 # Empty = the project this extension folder lives in (<project>/exts/cctv.dual_tracking).
 exts."cctv.dual_tracking".project_root = ""

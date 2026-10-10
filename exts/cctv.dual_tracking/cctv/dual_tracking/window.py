@@ -21,7 +21,8 @@ class ControlWindow:
                  on_pause: Callable[[], None], on_restart: Callable[[], None], on_stop: Callable[[], None],
                  on_vlm_console: Optional[Callable[[], None]] = None,
                  on_layout: Optional[Callable[[], None]] = None,
-                 on_select: Optional[Callable[[Path], None]] = None):
+                 on_select: Optional[Callable[[Path], None]] = None,
+                 on_setup: Optional[Callable[[], None]] = None):
         self.project_root = project_root
         self._on_start, self._on_pause, self._on_restart, self._on_stop = on_start, on_pause, on_restart, on_stop
         self._on_select = None          # set after the widgets exist (the combo fires while building)
@@ -49,6 +50,8 @@ class ControlWindow:
                                     self._video_field = ui.StringField(read_only=True, width=ui.Fraction(1))
                                     ui.Button("Browse...", width=80, clicked_fn=self._browse)
                                     ui.Button("Clear", width=50, clicked_fn=self._clear_video)
+                                if on_setup is not None:
+                                    ui.Button("Setup: packages, GPU, data ...", height=24, clicked_fn=on_setup)
                                 self._note = ui.Label("", height=18, word_wrap=True, style={"color": 0xFF88CCFF})
                                 with ui.HStack(height=22, spacing=6):
                                     self._auto = ui.CheckBox(width=20)

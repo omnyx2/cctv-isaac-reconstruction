@@ -10,6 +10,11 @@ Unattended run of one scenario (snapshots, quit at the end):
         [--/exts/cctv.dual_tracking/autostart_video=<video or frame folder>]  (Browse + Start:
          a video without a config starts on autostart_config's calibration and is calibrated
          in the background, see calibration.py)
+Setup (setup_window.py, "CCTV Setup"; opens by itself until the environment check passes):
+datasets folder, packages in Isaac Sim's Python, a GPU venv for YOLO when Isaac Sim's torch
+does not cover the GPU, import of the transfer folder, Ollama model. Install in an existing
+Isaac Sim: Window > Extensions > settings > Extension Search Paths: <project>/exts, enable
+"CCTV Timeline" (pulls this one in).
 Startup (run_isaac.bat): --/exts/cctv.dual_tracking/layout=true docks the windows around a
 clean viewport and hides the other panels (also the "Layout" button); default_config=<config>
 is selected and previewed (its scene and first video frame) until Start.
@@ -60,6 +65,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         if str(self.project_root) not in sys.path:
             sys.path.insert(0, str(self.project_root))
         carb.log_info(f"[cctv.dual_tracking] project root {self.project_root}")
+        from . import setup_env
+        setup_env.apply_to_environment()     # datasets folder, YOLO interpreter (CCTV Setup)
 
         from .session import ReplaySession, load_config  # noqa: F401  (project importable now)
         from .vlm_controller import VLMController
@@ -83,7 +90,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self._quit_on_finish = bool(settings.get(f"{SETTINGS}/quit_on_finish"))
         self._last_console = 0.0
         self._presentation = bool(settings.get(f"{SETTINGS}/presentation_layout"))
-        self._layout = self._presentation or bool(settings.get(f"{SETTINGS}/layout"))
+        self._layout = (self._presentation or bool(settings.get(f"{SETTINGS}/layout"))
+                        or bool(setup_env.get(setup_env.KEY_LAYOUT, False)))
         self._default_config = settings.get(f"{SETTINGS}/default_config") or ""
         self._startup_capture = settings.get(f"{SETTINGS}/startup_capture") or ""   # app window png at startup
         record_dir = settings.get(f"{SETTINGS}/record_dir") or ""
@@ -99,8 +107,13 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self.window = ControlWindow(self.project_root, self.start, self.toggle_pause, self.restart, self.stop,
                                     on_vlm_console=lambda: self.vlm_window.show(),
                                     on_layout=lambda: self.apply_layout(presentation=self._presentation),
-                                    on_select=self.preview)
+                                    on_select=self.preview,
+                                    on_setup=lambda: self.setup_window.show())
         self.vlm_window = VLMWindow(self.vlm, self.project_root, self._current_frame)
+        from .setup_window import SetupWindow
+        self.setup_window = SetupWindow(self.project_root)
+        if not setup_env.get(setup_env.KEY_SETUP_OK, False) and not self._autostart:
+            self.setup_window.show()          # first run here: packages, GPU, data
         if settings.get(f"{SETTINGS}/vlm_periodic"):
             self.vlm.set_periodic(True)
         self._update_sub = omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(
@@ -336,6 +349,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             else:
                 self.start(path)
         self.vlm.poll()
+        if self.setup_window.visible:
+            self.setup_window.poll()
         self._poll_calibration()
         self._poll_lanes()
         now = time.perf_counter()
@@ -405,6 +420,9 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         if getattr(self, "vlm_window", None) is not None:
             self.vlm_window.destroy()
             self.vlm_window = None
+        if getattr(self, "setup_window", None) is not None:
+            self.setup_window.destroy()
+            self.setup_window = None
         if getattr(self, "window", None) is not None:
             self.window.destroy()
             self.window = None
