@@ -16,8 +16,8 @@ The **CCTV Dual Tracking** window:
 | Control | |
 |---|---|
 | Scenario | a calibrated config from `config/` (video + camera calibration) |
-| Browse... | a video file or a folder of frames. If a config uses that video, it is selected; otherwise the video starts with the selected scenario's calibration and is calibrated automatically (below) |
-| Auto-calibrate / Road / s | calibrate videos without a config in the background (on by default); the allowed road standard ("any", DE_autobahn, CN_expressway, KR_expressway, KR_urban, US_interstate); seconds of video to perceive |
+| Browse... | a video file or a folder of frames. If a config uses that video, it is selected; otherwise its first frame is shown and Start calibrates it from its first seconds (~1 min, below), then replays it from the start with that calibration. A failed calibration is reported with its conditions; no other scenario's calibration is used |
+| Auto-calibrate / Road / s | calibrate videos without a config (on by default; off: replay with the selected scenario's calibration); the road standard of the country ("any", DE_autobahn, CN_expressway, KR_expressway, KR_urban, US_interstate; remembered); seconds of video the scene logic runs over (default 120: it confirms the camera over cycles) |
 | Calibration conditions | progress, and every condition of every calibration source (why one was admitted or rejected) |
 | Start / Pause / Restart / Stop | replay control |
 | Image | the real video with YOLO tracks; the reconstruction is in the viewport (CCTV camera) |
@@ -26,22 +26,27 @@ The **CCTV Dual Tracking** window:
 
 ## Automatic calibration
 
-Starting a video that has no config runs `tools/calibrate_video.py` in its own process
-(`calibration.py`) while the replay already plays on the borrowed calibration:
+Starting a video that has no config runs `tools/scene_calibration.py` in its own
+process (`calibration.py`), the scene dynamic logic over the first N seconds (default
+120; `world/scene_logic.py`):
 
-1. perceive the first N seconds (yolo11s at 1280 px, ByteTrack, camera motion)
-2. select a calibration: this camera's stored calibration if the view is unchanged
-   (`data/calibrations/<camera id>/`, lane or track vanishing point) -> lane markings
-   (METRIC: dash period and lane width of a road standard, car box widths checked) ->
-   vanishing points (PROJECTIVE, not enough to place vehicles)
-3. METRIC: write `config/auto_<recording>.yaml` (camera, homography, the real lane
-   markings for the USD scene) and store a new lane-marking calibration under the camera id
+1. every pixel is an edge existence automaton: blurred Canny edges accumulate, and
+   whenever a pixel reaches 255 the sum is divided by 255 and what is below 0.2 is
+   dropped - passing vehicles go to the dynamic map (the road), static paint, rails and
+   signs stay (STATIC)
+2. at each such cycle the camera is estimated: vanishing point (rays through it carry
+   the most line evidence; Gaussian process, then deterministic refinement), the lines
+   through it on the road, their dashes, the road standard from the dash ratio, focal
+   length (lane width / dash period = the standard's), height (lane width)
+3. the calibration automaton: a first accepted estimate is TENTATIVE, a later cycle that
+   agrees confirms it (CALIBRATED, median of the agreeing estimates)
+4. write `config/auto_<recording>.yaml`: one camera for the Isaac scene and the world
+   model (`simulation.camera`, `mapping.calibration_points`), and the lane markings - the
+   paint among the lines (dashes, edge lines; not guard rails) on the road
 
-The extension then selects that config and restarts the replay on it at the same video
-time: the stage is rebuilt with the calibrated camera and lane markings, the world model
-uses the new homography. The video is from then on a scenario of its own. Without a
-METRIC calibration the replay stays on the borrowed one and the window says which
-conditions failed.
+The extension then selects that config and replays the video on it from the start.
+Without a calibration the window says why (the estimates' reasons). Road: the country's
+standard, or "any" (each estimate tries all and keeps the one most lines follow).
 
 A frame folder's frame rate is read from the file names when they carry the capture
 time (`<s>_<ns>_...`, TUMTraf); for video files from the container.
@@ -49,14 +54,21 @@ time (`<s>_<ns>_...`, TUMTraf); for video files from the container.
 ## Automatic lane markings
 
 Every scenario gets the real lane markings in the scene, whatever its calibration came
-from. A config calibrated from lane markings carries them; for any other (calibrated by
-hand, borrowed, or after a failed automatic calibration) `tools/extract_lanes.py` runs
-in the background: marking pieces of the video's empty-road background (dashes too
-short to pass alone are kept when they line up towards the vanishing point), projected
-with the scenario's own homography so they lie where its vehicles are placed. When done
-they replace the straight lane lines in the running scene. They are cached per video and
-calibration in `data/cache/lanes/` (main.py uses the cache too), so the next start draws
-them right away.
+from. A config calibrated by the scene dynamic logic carries them; for any other
+(calibrated by hand, or earlier) `tools/scene_calibration.py --camera-config` runs in the
+background: the same per-pixel edge existence over the first 120 s, then the paint
+among the lines through the scenario's vanishing point - a stripe brighter than both
+sides and than the asphalt, with asphalt and traffic beside it - drawn on the stripe's
+centre with its width, projected with the homography the world model places the
+vehicles with. When done they replace the straight lane lines in the running scene.
+They are cached per video and calibration in `data/cache/lanes/` (main.py uses the
+cache too), so the next start draws them right away.
+
+Known limit, not solvable with these cues: in sunshine the top of a guard rail is a
+bright stripe on asphalt-like ground with traffic passing in front of it in the image -
+brightness, width, asphalt beside it and traffic beside it all read as paint (TUM s03
+north 50). It can be drawn as a solid line. Only height would tell (a rail is ~0.75 m
+above the road), and one fixed camera does not see height.
 
 ## VLM Console
 
@@ -89,7 +101,7 @@ Nothing blocks the UI.
 |---|---|---|
 | `project_root` | the project containing `exts/` | |
 | `autostart_config` | "" | config to start right away (project-relative) |
-| `autostart_video` | "" | with `autostart_config`: Browse this video and Start (auto-calibration as in the window) |
+| `autostart_video` | "" | Browse this video and Start (alone: calibrate and replay it; with `autostart_config`: that scenario selected first) |
 | `snapshot_dir` / `snapshot_every` | "" / 125 | save real view + viewport every N frames |
 | `quit_on_finish` | false | quit Isaac Sim at the end of the video |
 | `vlm_periodic` | false | periodic VLM analysis on from the start |

@@ -16,16 +16,38 @@ PREVIEW_WIDTH = 720           # pixels the real view is resized to (the widget f
 PREVIEW_HEIGHT = 430          # widget height; the image keeps its aspect inside
 
 
+def _standard_index() -> int:
+    """The Road choice remembered from last time (persistent setting)."""
+    try:
+        import carb.settings
+        name = carb.settings.get_settings().get("/persistent/exts/cctv.dual_tracking/road_standard") or ""
+    except ImportError:
+        name = ""
+    return STANDARDS.index(name) + 1 if name in STANDARDS else 0
+
+
+def _remember_standard(standards):
+    try:
+        import carb.settings
+        carb.settings.get_settings().set("/persistent/exts/cctv.dual_tracking/road_standard",
+                                         standards[0] if standards else "")
+    except ImportError:
+        pass
+
+
 class ControlWindow:
     def __init__(self, project_root: Path, on_start: Callable[[Path, Optional[str], bool], None],
                  on_pause: Callable[[], None], on_restart: Callable[[], None], on_stop: Callable[[], None],
                  on_vlm_console: Optional[Callable[[], None]] = None,
                  on_layout: Optional[Callable[[], None]] = None,
                  on_select: Optional[Callable[[Path], None]] = None,
-                 on_setup: Optional[Callable[[], None]] = None):
+                 on_setup: Optional[Callable[[], None]] = None,
+                 on_start_video: Optional[Callable[[str], None]] = None,
+                 on_video_picked: Optional[Callable[[str], None]] = None):
         self.project_root = project_root
         self._on_start, self._on_pause, self._on_restart, self._on_stop = on_start, on_pause, on_restart, on_stop
         self._on_select = None          # set after the widgets exist (the combo fires while building)
+        self._on_start_video, self._on_video_picked = on_start_video, on_video_picked
         self.configs: List[Path] = runnable_configs(project_root)
         self.video_override: Optional[str] = None
         self._calib_lines: List[str] = []
@@ -59,10 +81,11 @@ class ControlWindow:
                                     self._auto.model.add_value_changed_fn(lambda *_: self._update_note())
                                     ui.Label("Auto-calibrate videos without a config", width=250)
                                     ui.Label("Road", width=34)
-                                    self._standard = ui.ComboBox(0, "any", *STANDARDS, width=150)
+                                    self._standard = ui.ComboBox(_standard_index(), "any", *STANDARDS, width=150)
+                                    self._standard.model.add_item_changed_fn(lambda *_: _remember_standard(self.standards))
                                     ui.Label("s", width=10)
                                     self._seconds = ui.FloatField(width=40)
-                                    self._seconds.model.set_value(20.0)
+                                    self._seconds.model.set_value(120.0)    # the scene logic confirms over cycles
                                 self._calib_status = ui.Label("", height=18, word_wrap=True, visible=False)
                                 self._lanes_status = ui.Label("", height=18, word_wrap=True, visible=False)
                                 with ui.CollapsableFrame("Calibration conditions / lane markings", collapsed=True, height=0):
@@ -164,6 +187,8 @@ class ControlWindow:
             self.video_override = path
         self._video_field.model.set_value(path)
         self._update_note()
+        if self.video_override and self._on_video_picked is not None:
+            self._on_video_picked(path)
 
     def _clear_video(self):
         self.video_override = None
@@ -175,21 +200,28 @@ class ControlWindow:
 
     def _fill_note(self):
         config = self.selected_config
-        if config is None:
-            self._note.text = "No runnable config in <project>/config"
+        if config is None and not self.video_override:
+            self._note.text = "No scenario here yet: Browse a video (file or frame folder) and press Start."
             return
         if self.video_override:
-            self._note.text = (f"No config for this video: starts with the calibration of '{config.stem}'"
-                               + (", calibrates in the background and switches over."
-                                  if self.auto_calibrate else " (geometry will be wrong)."))
+            if self.auto_calibrate:
+                self._note.text = ("New video: Start calibrates it from its first seconds (~30 s), then replays it. "
+                                   "Set Road to the country's standard for the scale.")
+            else:
+                self._note.text = (f"New video, auto-calibration off: replays with the calibration of "
+                                   f"'{config.stem}' (geometry only right for the same camera)."
+                                   if config is not None else "New video, auto-calibration off: no calibration to use.")
         else:
             self._video_field.model.set_value("(video of the selected config)")
             self._note.text = ""
 
     def _start(self):
-        if self.selected_config is not None:
-            self._on_start(self.selected_config, self.video_override,
-                           bool(self.video_override) and self.auto_calibrate)
+        if self.video_override and self.auto_calibrate and self._on_start_video is not None:
+            self._on_start_video(self.video_override)       # calibrate this video, then replay it
+        elif self.selected_config is not None:
+            self._on_start(self.selected_config, self.video_override, False)
+        else:
+            self._status.text = "nothing to start: Browse a video (it is calibrated automatically)"
 
     # ------------------------------------------------------------------ display
 

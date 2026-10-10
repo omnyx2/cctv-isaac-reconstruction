@@ -1,20 +1,11 @@
-# Automatic calibration (lane_markings, METRIC) by tools/auto_calibrate.py
-# road standard DE_autobahn, focal 2566 px, height 8.73 m, pitch 13.87 deg
-# conditions:
-#   [ok] lane_inliers >= 10: lane_inliers = 72
-#   [ok] lane_boundaries >= 3: lane_boundaries = 18
-#   [ok] dash_periods >= 4: dash_periods = 29
-#   [ok] 3 <= hfov_deg <= 120: hfov_deg = 41.02
-#   [ok] 3 <= height_m <= 50: height_m = 8.735
-#   [ok] lane_width_cv <= 0.2: lane_width_cv = 0.1271
-#   [ok] standard_support >= 0.5: standard_support = 0.8824
-#   [ok] standard_margin >= 0.25: standard_margin = 0.8824
-#   [ok] car box widths plausible: median car box width 2.48 m (400 boxes)
+# Scene dynamic logic calibration (calibrated, 6 agreeing estimates)
+# focal 2634 px, height 8.61 m, pitch 13.57 deg; 54 lane markings
+# video D:\datasets\TUMTraf-Accid3nD\data\r09_s01\images\s050_camera_basler_south_16mm
 
 video: {path: '${DATASETS}/TUMTraf-Accid3nD/data/r09_s01/images/s050_camera_basler_south_16mm',
   fps: 25.0}
 yolo:
-  model_path: yolo11s.pt      # TUM labels: recall 0.95, IoU 0.88-0.92, 11 ms at 1280 (yolov8n: 0.45-0.59 at 640)
+  model_path: yolo11s.pt
   confidence: 0.25
   classes: [0, 2, 5, 7]
   tracker_config: bytetrack.yaml
@@ -23,27 +14,297 @@ simulation:
   vehicle_dynamics: true
   ground_size: 400.0
   camera:
-    position: [0.0, 0.0, 8.735]
-    pitch_deg: 13.873
-    yaw_deg: 0.299
-    focal_px: 2566.2
+    position: [0.0, 0.0, 8.611]
+    pitch_deg: 13.568
+    yaw_deg: 0.276
+    focal_px: 2634.3
     image_size: [1920, 1200]
-  lane_lines_x: [-38.501, -35.383, -29.729, -27.223, -23.231, -18.748, -14.998, -11.433,
-    -7.702, -7.283, -7.042, -2.397, 1.604, 5.328, 9.367, 13.231, 17.129, 20.497]
+  lane_lines_x: [-4.572, 1.453, 1.612, 5.114, 5.28, 12.996, 47.575]
+  lane_markings:
+  - p:
+    - [16.88, 198.652]
+    - [16.64, 45.591]
+    paint: white
+    w: 0.313
+  - p:
+    - [9.162, 172.294]
+    - [9.146, 151.921]
+    paint: white
+    w: 0.344
+  - p:
+    - [1.616, 172.173]
+    - [1.607, 162.728]
+    paint: white
+    w: 0.254
+  - p:
+    - [1.596, 189.942]
+    - [1.59, 181.259]
+    paint: white
+    w: 0.351
+  - p:
+    - [1.626, 152.351]
+    - [1.618, 144.887]
+    paint: white
+    w: 0.17
+  - p:
+    - [12.996, 131.95]
+    - [12.996, 124.773]
+    paint: white
+    w: 0.256
+  - p:
+    - [9.198, 135.214]
+    - [9.206, 128.047]
+    paint: white
+    w: 0.36
+  - p:
+    - [9.193, 111.333]
+    - [9.202, 104.413]
+    paint: white
+    w: 0.353
+  - p:
+    - [5.251, 133.354]
+    - [5.253, 126.5]
+    paint: white
+    w: 0.228
+  - p:
+    - [9.181, 146.906]
+    - [9.174, 140.107]
+    paint: white
+    w: 0.385
+  - p:
+    - [1.631, 134.247]
+    - [1.623, 127.701]
+    paint: white
+    w: 0.199
+  - p:
+    - [5.278, 151.396]
+    - [5.271, 144.886]
+    paint: white
+    w: 0.258
+  - p:
+    - [9.177, 123.132]
+    - [9.186, 116.738]
+    paint: white
+    w: 0.391
+  - p:
+    - [5.253, 79.51]
+    - [5.243, 73.299]
+    paint: white
+    w: 0.167
+  - p:
+    - [5.236, 61.29]
+    - [5.224, 55.144]
+    paint: white
+    w: 0.154
+  - p:
+    - [9.237, 98.725]
+    - [9.224, 92.6]
+    paint: white
+    w: 0.362
+  - p:
+    - [1.643, 79.571]
+    - [1.64, 73.502]
+    paint: white
+    w: 0.148
+  - p:
+    - [5.255, 115.171]
+    - [5.256, 109.107]
+    paint: white
+    w: 0.197
+  - p:
+    - [1.569, 43.406]
+    - [1.575, 37.376]
+    paint: white
+    w: 0.158
+  - p:
+    - [1.619, 61.46]
+    - [1.603, 55.45]
+    paint: white
+    w: 0.158
+  - p:
+    - [5.304, 97.11]
+    - [5.293, 91.108]
+    paint: white
+    w: 0.165
+  - p:
+    - [-14.777, 87.511]
+    - [-14.766, 81.521]
+    paint: white
+    w: 0.599
+  - p:
+    - [5.22, 43.232]
+    - [5.206, 37.257]
+    paint: white
+    w: 0.144
+  - p:
+    - [9.228, 75.123]
+    - [9.212, 69.187]
+    paint: white
+    w: 0.275
+  - p:
+    - [-7.065, 57.658]
+    - [-7.05, 51.741]
+    paint: white
+    w: 0.318
+  - p:
+    - [1.65, 115.281]
+    - [1.64, 109.367]
+    paint: white
+    w: 0.172
+  - p:
+    - [9.179, 39.195]
+    - [9.203, 33.304]
+    paint: white
+    w: 0.284
+  - p:
+    - [12.932, 95.589]
+    - [12.936, 89.705]
+    paint: white
+    w: 0.186
+  - p:
+    - [12.944, 77.991]
+    - [12.948, 72.142]
+    paint: white
+    w: 0.152
+  - p:
+    - [-11.115, 59.433]
+    - [-11.124, 53.588]
+    paint: white
+    w: 0.139
+  - p:
+    - [9.22, 51.079]
+    - [9.199, 45.282]
+    paint: white
+    w: 0.292
+  - p:
+    - [12.955, 60.315]
+    - [12.959, 54.524]
+    paint: white
+    w: 0.116
+  - p:
+    - [9.223, 62.949]
+    - [9.234, 57.31]
+    paint: white
+    w: 0.265
+  - p:
+    - [9.235, 86.833]
+    - [9.222, 81.217]
+    paint: white
+    w: 0.272
+  - p:
+    - [1.639, 97.539]
+    - [1.629, 92.137]
+    paint: white
+    w: 0.181
+  - p:
+    - [-7.022, 34.333]
+    - [-7.014, 31.666]
+    paint: white
+    w: 0.46
+  - p:
+    - [-6.251, 32.76]
+    - [-6.258, 31.498]
+    paint: white
+    w: 0.471
+  - p:
+    - [-6.95, 25.293]
+    - [-6.948, 24.069]
+    paint: white
+    w: 0.137
+  - p:
+    - [-6.706, 19.026]
+    - [-6.694, 18.037]
+    paint: white
+    w: 0.49
+  - p:
+    - [-6.521, 21.301]
+    - [-6.522, 20.453]
+    paint: white
+    w: 0.085
+  - p:
+    - [-5.465, 27.32]
+    - [-5.461, 26.713]
+    paint: white
+    w: 0.499
+  - p:
+    - [-7.092, 23.569]
+    - [-7.088, 23.018]
+    paint: white
+    w: 0.32
+  - p:
+    - [-6.99, 20.336]
+    - [-6.988, 19.819]
+    paint: white
+    w: 0.515
+  - p:
+    - [-5.034, 31.181]
+    - [-5.033, 30.667]
+    paint: white
+    w: 0.126
+  - p:
+    - [-5.345, 18.94]
+    - [-5.343, 18.445]
+    paint: white
+    w: 0.098
+  - p:
+    - [-5.963, 18.529]
+    - [-5.96, 18.053]
+    paint: white
+    w: 0.201
+  - p:
+    - [-4.506, 43.112]
+    - [-4.507, 42.811]
+    paint: white
+    w: 0.075
+  - p:
+    - [-6.155, 20.162]
+    - [-6.159, 19.866]
+    paint: white
+    w: 0.513
+  - p:
+    - [-5.004, 27.496]
+    - [-5.004, 27.244]
+    paint: white
+    w: 0.062
+  - p:
+    - [-4.93, 18.832]
+    - [-4.93, 18.643]
+    paint: white
+    w: 0.08
+  - p:
+    - [-5.392, 18.419]
+    - [-5.391, 18.269]
+    paint: white
+    w: 0.194
+  - p:
+    - [-5.802, 17.36]
+    - [-5.803, 17.229]
+    paint: white
+    w: 0.138
+  - p:
+    - [-4.978, 20.044]
+    - [-4.978, 19.938]
+    paint: white
+    w: 0.056
+  - p:
+    - [-5.311, 17.744]
+    - [-5.311, 17.687]
+    paint: white
+    w: 0.119
 mapping:
-  source: auto:lane_markings
+  source: auto:scene_logic
   calibration_points:
   - - [576.0, 1104.0]
-    - [-3.134, 18.729]
+    - [-3.076, 18.97]
   - - [1344.0, 1104.0]
-    - [2.939, 18.761]
+    - [2.893, 18.999]
   - - [672.0, 780.0]
-    - [-3.325, 27.05]
+    - [-3.259, 27.335]
   - - [1248.0, 780.0]
-    - [3.043, 27.084]
+    - [2.996, 27.365]
 context:
   allowed_standards: [DE_autobahn]
-stabilization: {enabled: false}   # fixed gantry camera
+stabilization: {enabled: false}
 display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
 vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'qwen2.5vl:7b',
   interval_s: 4.0, max_side: 1344, timeout_s: 60.0}

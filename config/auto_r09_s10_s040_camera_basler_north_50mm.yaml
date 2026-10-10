@@ -1,0 +1,250 @@
+# Scene dynamic logic calibration (calibrated, 6 agreeing estimates)
+# focal 8531 px, height 8.55 m, pitch 3.72 deg; 42 lane markings
+# video D:\datasets\TUMTraf-Accid3nD\data\r09_s10\images\s040_camera_basler_north_50mm
+
+video: {path: '${DATASETS}/TUMTraf-Accid3nD/data/r09_s10/images/s040_camera_basler_north_50mm',
+  fps: 25.0}
+yolo:
+  model_path: yolo11s.pt
+  confidence: 0.25
+  classes: [0, 2, 5, 7]
+  tracker_config: bytetrack.yaml
+  imgsz: 1280
+simulation:
+  vehicle_dynamics: true
+  ground_size: 400.0
+  camera:
+    position: [0.0, 0.0, 8.555]
+    pitch_deg: 3.718
+    yaw_deg: -2.86
+    focal_px: 8531.0
+    image_size: [1920, 1200]
+  lane_lines_x: [-4.048, 3.458, 3.633, 7.247, 23.561, 27.295]
+  lane_markings:
+  - p:
+    - [11.192, 198.199]
+    - [11.417, 70.801]
+    paint: white
+    w: 0.398
+  - p:
+    - [-7.446, 199.801]
+    - [-7.41, 121.38]
+    paint: white
+    w: 0.301
+  - p:
+    - [31.164, 198.62]
+    - [31.164, 192.013]
+    paint: white
+    w: 0.261
+  - p:
+    - [19.998, 160.615]
+    - [20.0, 154.135]
+    paint: white
+    w: 0.142
+  - p:
+    - [7.368, 176.02]
+    - [7.364, 169.747]
+    paint: white
+    w: 0.16
+  - p:
+    - [19.966, 178.895]
+    - [19.969, 172.676]
+    paint: white
+    w: 0.211
+  - p:
+    - [27.295, 177.198]
+    - [27.295, 171.013]
+    paint: white
+    w: 0.206
+  - p:
+    - [19.987, 197.561]
+    - [19.989, 191.399]
+    paint: white
+    w: 0.175
+  - p:
+    - [7.411, 194.256]
+    - [7.406, 188.125]
+    paint: white
+    w: 0.177
+  - p:
+    - [-3.897, 167.755]
+    - [-3.897, 161.661]
+    paint: white
+    w: 0.148
+  - p:
+    - [23.5, 177.831]
+    - [23.502, 171.748]
+    paint: white
+    w: 0.181
+  - p:
+    - [7.318, 103.042]
+    - [7.314, 97.015]
+    paint: white
+    w: 0.155
+  - p:
+    - [7.312, 84.763]
+    - [7.308, 78.738]
+    paint: white
+    w: 0.165
+  - p:
+    - [23.493, 196.354]
+    - [23.496, 190.339]
+    paint: white
+    w: 0.2
+  - p:
+    - [27.218, 194.997]
+    - [27.22, 189.022]
+    paint: white
+    w: 0.227
+  - p:
+    - [7.303, 138.877]
+    - [7.307, 132.903]
+    paint: white
+    w: 0.148
+  - p:
+    - [7.331, 156.921]
+    - [7.328, 150.947]
+    paint: white
+    w: 0.143
+  - p:
+    - [3.586, 101.373]
+    - [3.579, 95.425]
+    paint: white
+    w: 0.163
+  - p:
+    - [3.642, 136.913]
+    - [3.642, 131.005]
+    paint: white
+    w: 0.168
+  - p:
+    - [3.699, 173.241]
+    - [3.697, 167.377]
+    paint: white
+    w: 0.152
+  - p:
+    - [3.683, 154.853]
+    - [3.681, 149.014]
+    paint: white
+    w: 0.155
+  - p:
+    - [-3.945, 132.578]
+    - [-3.949, 126.743]
+    paint: white
+    w: 0.151
+  - p:
+    - [23.561, 159.489]
+    - [23.561, 153.665]
+    paint: white
+    w: 0.162
+  - p:
+    - [3.706, 191.236]
+    - [3.704, 185.415]
+    paint: white
+    w: 0.169
+  - p:
+    - [-4.132, 80.86]
+    - [-4.126, 75.044]
+    paint: white
+    w: 0.152
+  - p:
+    - [7.286, 120.776]
+    - [7.291, 114.965]
+    paint: white
+    w: 0.146
+  - p:
+    - [3.548, 83.326]
+    - [3.542, 77.515]
+    paint: white
+    w: 0.164
+  - p:
+    - [20.025, 141.859]
+    - [20.026, 136.055]
+    paint: white
+    w: 0.167
+  - p:
+    - [-3.864, 184.915]
+    - [-3.864, 179.128]
+    paint: white
+    w: 0.14
+  - p:
+    - [-0.352, 84.835]
+    - [-0.341, 79.092]
+    paint: white
+    w: 0.298
+  - p:
+    - [-3.943, 150.18]
+    - [-3.941, 144.488]
+    paint: white
+    w: 0.151
+  - p:
+    - [-0.345, 96.578]
+    - [-0.336, 90.892]
+    paint: white
+    w: 0.308
+  - p:
+    - [-0.338, 108.392]
+    - [-0.331, 102.721]
+    paint: white
+    w: 0.297
+  - p:
+    - [-4.067, 98.114]
+    - [-4.066, 92.583]
+    paint: white
+    w: 0.148
+  - p:
+    - [3.609, 118.958]
+    - [3.602, 113.439]
+    paint: white
+    w: 0.162
+  - p:
+    - [-4.001, 115.04]
+    - [-3.995, 109.524]
+    paint: white
+    w: 0.145
+  - p:
+    - [-0.3, 131.735]
+    - [-0.296, 126.251]
+    paint: white
+    w: 0.287
+  - p:
+    - [-0.326, 120.014]
+    - [-0.32, 114.533]
+    paint: white
+    w: 0.302
+  - p:
+    - [-0.377, 73.183]
+    - [-0.365, 68.534]
+    paint: white
+    w: 0.303
+  - p:
+    - [7.337, 66.622]
+    - [7.34, 62.684]
+    paint: white
+    w: 0.172
+  - p:
+    - [-3.863, 199.986]
+    - [-3.863, 196.715]
+    paint: white
+    w: 0.154
+  - p:
+    - [3.541, 65.46]
+    - [3.538, 62.857]
+    paint: white
+    w: 0.172
+mapping:
+  source: auto:scene_logic
+  calibration_points:
+  - - [576.0, 1104.0]
+    - [0.321, 68.761]
+  - - [1344.0, 1104.0]
+    - [6.534, 68.45]
+  - - [672.0, 780.0]
+    - [1.595, 99.285]
+  - - [1248.0, 780.0]
+    - [8.31, 98.95]
+context:
+  allowed_standards: [DE_autobahn]
+stabilization: {enabled: false}
+display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
+vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'qwen2.5vl:7b',
+  interval_s: 4.0, max_side: 1344, timeout_s: 60.0}

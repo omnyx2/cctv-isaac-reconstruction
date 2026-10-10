@@ -82,7 +82,7 @@ def interior_of(boxes, w, h):
 
 
 def project(world, objects, T=None):
-    H_inv = np.linalg.inv(world.mapper.homography)
+    H_inv = np.linalg.inv(world.camera.homography)
     out = []
     for o in objects:
         v = H_inv @ np.array([o.x, o.y, 1.0])

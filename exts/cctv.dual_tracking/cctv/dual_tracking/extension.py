@@ -111,7 +111,9 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
                                     on_vlm_console=lambda: self.vlm_window.show(),
                                     on_layout=lambda: self.apply_layout(presentation=self._presentation),
                                     on_select=self.preview,
-                                    on_setup=lambda: self.setup_window.show())
+                                    on_setup=lambda: self.setup_window.show(),
+                                    on_start_video=self.calibrate_and_start,
+                                    on_video_picked=self.preview_video)
         self.vlm_window = VLMWindow(self.vlm, self.project_root, self._current_frame)
         from .setup_window import SetupWindow
         self.setup_window = SetupWindow(self.project_root)
@@ -145,19 +147,25 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             return
         print(f"[CCTV] scenario {config_path.name}" + (f", video {video_override}" if video_override else ""))
         calibrating = bool(calibrate and video_override)
-        # Lane markings: a VLM-reviewed extraction (cache) > the config's own > an
-        # unreviewed extraction (cache) > extract now; unreviewed ones are reviewed as
-        # soon as the VLM is on (_poll_lanes)
+        # Lane markings: a final extraction (cache: scene logic, or VLM-reviewed) > the
+        # config's own > an unreviewed extraction (cache) > extract now (scene logic with
+        # the scenario's camera); an older unreviewed one is reviewed once the VLM is on
         from world.context.lane_cache import load_record
         record = load_record(config, self.project_root)
         has_own = bool((config.get("simulation") or {}).get("lane_markings"))
         need_lanes = False
         self._lanes_reviewed = False
-        if record and record.get("markings") and (record.get("reviewed") or not has_own):
+        # scene-logic markings (the paint checked by the tool) are final: no VLM review
+        scene_logic = (config.get("mapping") or {}).get("source") == "auto:scene_logic"
+        final = bool(record and (record.get("reviewed") or record.get("method") == "scene_logic"))
+        if record and record.get("markings") and (final or not has_own) and not scene_logic:
             config.setdefault("simulation", {})["lane_markings"] = record["markings"]
-            self._lanes_reviewed = bool(record.get("reviewed"))
+            self._lanes_reviewed = final
             print(f"[CCTV] lane markings: {len(record['markings'])} pieces from the cache"
-                  + (" (VLM-reviewed)" if self._lanes_reviewed else ""))
+                  + (" (scene logic)" if record.get("method") == "scene_logic" else
+                     " (VLM-reviewed)" if record.get("reviewed") else ""))
+        elif scene_logic and has_own:
+            self._lanes_reviewed = True            # the calibration's own paint
         elif not has_own:
             need_lanes = True
         self.config = config
@@ -232,12 +240,43 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         markings = load_cached(self.config, self.project_root)
         if markings and self.session.set_lane_markings(markings):
             print(f"[CCTV] lane markings: {len(markings)} pieces drawn"
-                  + (" (VLM-reviewed)" if job.reviewed else ""))
-            job.progress = f"{len(markings)} pieces drawn" + (" (VLM-reviewed)" if job.reviewed else "")
+                  + " (scene logic)")
+            job.progress = f"{len(markings)} pieces drawn (scene logic)"
             self._lanes_reviewed = self._lanes_reviewed or job.reviewed
         else:
             job.state, job.progress = job.FAILED, "extracted, but nothing in the cache for this scenario"
         self.window.show_lanes(job)
+
+    def preview_video(self, video: str):
+        """A picked video without a config: its first frame in the window."""
+        from .session import first_frame
+
+        if self.session is not None and self.session.state in (self.session.RUNNING, self.session.PAUSED):
+            return
+        frame, size = first_frame({"video": {"path": video}})
+        if frame is not None:
+            self.window.show_frame(frame)
+            self._preview_size = size
+            self.window._status.text = f"ready: {Path(video).name} ({size[0]}x{size[1]}) - Start calibrates it, then replays"
+        else:
+            self.window._status.text = f"cannot open {video}"
+
+    def calibrate_and_start(self, video: str):
+        """A video without a config: calibrate it from its first seconds in the background
+        (tools/calibrate_video.py), then replay it with that calibration from the start
+        (_poll_calibration). No other scenario's calibration is borrowed."""
+        from .calibration import AutoCalibration
+
+        self.stop()
+        self.session = None
+        if self.calibration is not None:
+            self.calibration.cancel()
+        self._cancel_lanes()
+        self.preview_video(video)
+        print(f"[CCTV] calibrating {video} before the replay")
+        self.calibration = AutoCalibration(self.project_root, video, seconds=self.window.calibration_seconds,
+                                           standards=self.window.standards)
+        self._calibration_applied = False
 
     def preview(self, config_path: Path):
         """Before Start: the scenario's scene (camera, lane markings) in the viewport and
@@ -283,6 +322,10 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         if calib is None:
             return
         self.window.show_calibration(calib)
+        if calib.state == calib.FAILED and self.session is None and not self._calibration_applied:
+            self._calibration_applied = True
+            self.window._status.text = ("not calibrated: no METRIC calibration from this video "
+                                        "(see 'Calibration conditions'); try another Road standard or more seconds")
         if calib.state == calib.FAILED and self._lanes_request is not None:
             self._start_lanes()        # stays on the borrowed calibration: draw its lanes
         if calib.state != calib.DONE or self._calibration_applied:
@@ -339,18 +382,20 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
                 self.window.select_config(path if path.is_absolute() else self.project_root / path)
             if self.window.selected_config is not None:
                 self.preview(self.window.selected_config)
-        if self._autostart and self._updates == AUTOSTART_DELAY_UPDATES:
+        if (self._autostart or self._autostart_video) and self._updates == AUTOSTART_DELAY_UPDATES:
             # Once per process: a re-created extension instance (reload while quitting) must not start again
             carb.settings.get_settings().set(f"{SETTINGS}/autostart_config", "")
+            carb.settings.get_settings().set(f"{SETTINGS}/autostart_video", "")
             if carb.settings.get_settings().get(f"{SETTINGS}/quitting"):
                 return
-            path = Path(self._autostart)
-            self.window.select_config(path if path.is_absolute() else self.project_root / path)
+            if self._autostart:
+                path = Path(self._autostart)
+                self.window.select_config(path if path.is_absolute() else self.project_root / path)
             if self._autostart_video:      # as if the video was picked with Browse, then Start
                 self.window._set_video(self._autostart_video)
                 self.window._start()
             else:
-                self.start(path)
+                self.start(Path(self._autostart))
         self.vlm.poll()
         if self.setup_window.visible:
             self.setup_window.poll()

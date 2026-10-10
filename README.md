@@ -32,6 +32,10 @@ C:\isaacsim\isaac-sim.bat --ext-folder exts --enable cctv.dual_tracking --enable
 ```
 **CCTV Dual Tracking** 창에서 시나리오나 영상(파일 또는 프레임 폴더)을 골라 Start를 누르면 뷰포트에서 재구성이 돈다
 ([exts/cctv.dual_tracking/docs/README.md](exts/cctv.dual_tracking/docs/README.md)).
+설정 파일이 없는 새 영상도 된다. Browse로 고르고 Road에 그 나라 도로 규격을 한 번 지정한 뒤 Start를 누르면 된다.
+- 처음 몇 초로 자동 캘리브레이션을 한다(약 30초).
+- 그 결과로 처음부터 재생한다.
+- 실패하면 실패한 조건을 보여 준다. 다른 시나리오의 캘리브레이션으로 대신 돌리지는 않는다.
 **CCTV VLM Console**에서 VLM 모델·주기·프롬프트를 바꾸고 결과와 처리 시간을 본다.
 **CCTV Timeline**에서 사고 마커(주석 접촉 시각, VLM 판정)를 눌러 그 몇 초 앞으로 이동하고, 슬로모션·한 프레임씩 넘기기, 영상 전체 VLM 스캔을 한다
 ([exts/cctv.timeline/docs/README.md](exts/cctv.timeline/docs/README.md)).

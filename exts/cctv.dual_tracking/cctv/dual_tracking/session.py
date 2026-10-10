@@ -16,6 +16,8 @@ from typing import Callable, List, Optional
 import numpy as np
 import yaml
 
+CAMERA_MISMATCH_WARN_M = 0.5    # m: the config's two camera sections disagree more: say so
+
 
 def project_paths(config: dict, project_root: Path) -> dict:
     """Make the project-relative paths of a config absolute (Kit's working directory
@@ -44,10 +46,10 @@ def load_config(config_path: Path, project_root: Path, video_override: Optional[
 
 
 def runnable_configs(project_root: Path) -> List[Path]:
-    """Configs that describe a video with a calibration (TEMPLATE and annotation files excluded),
-    and whose video is on this computer: a scenario whose dataset was not downloaded would only
-    fail with "Video not found" at Start."""
+    """Configs that describe a video with a calibration, and whose video is on this
+    machine (TEMPLATE, annotation files and scenarios of datasets not downloaded excluded)."""
     from cctv_utils.paths import expand
+
     configs = []
     for path in sorted((project_root / "config").glob("*.yaml")):
         try:
@@ -55,16 +57,12 @@ def runnable_configs(project_root: Path) -> List[Path]:
                 data = yaml.safe_load(f) or {}
         except yaml.YAMLError:
             continue
-        if path.stem == "TEMPLATE" or "video" not in data or "mapping" not in data:
-            continue
-        try:
-            video = Path(expand(data["video"]["path"]))
-        except (KeyError, TypeError):
-            continue
-        if not video.is_absolute():
-            video = project_root / video
-        if video.exists():
-            configs.append(path)
+        if path.stem != "TEMPLATE" and "video" in data and "mapping" in data:
+            video = Path(expand((data.get("video") or {}).get("path", "")))
+            if not video.is_absolute():
+                video = project_root / video
+            if video.exists():
+                configs.append(path)
     return configs
 
 
@@ -257,6 +255,11 @@ class ReplaySession:
         self._perception.start()
         self.log(f"[CCTV] started {video['path']}: {size[0]}x{size[1]} @ {self.fps:.1f} FPS, "
                  f"{self.total_frames} frames")
+        mismatch = self._world.camera_mismatch_m
+        if mismatch is not None and mismatch > CAMERA_MISMATCH_WARN_M:
+            self.log(f"[CCTV] warning: simulation.camera and mapping.calibration_points disagree by up to "
+                     f"{mismatch:.2f} m on the road - the scene and the vehicles will not line up "
+                     f"(recalibrate, or write both from one camera)")
 
     def set_lane_markings(self, markings) -> bool:
         """Draw lane markings into the running scene (replacing the straight lane lines)."""

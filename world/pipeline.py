@@ -1,8 +1,9 @@
 """The whole world model, built from a config, shared by main.py and the tools.
 
     calibration context (world/context: the admitted calibration, its road chart and domain)
+    the world's camera (world/camera.py: image <-> road, metric, camera motion)
     image detections + camera-motion transform
-        -> CoordinateMapper   (ground-plane projection)
+        -> WorldCamera        (ground-plane projection)
         -> WorldTracker       (DynamicLogic filtering + physical consistency)
         -> FleetDriver        (vehicles driven by the bicycle model)
         -> perceived objects, driven poses
@@ -15,7 +16,7 @@ import numpy as np
 
 from world.context import GeometryLevel, RoadContext, select
 from world.context.sources import default_sources
-from world.coordinate_mapper import CoordinateMapper
+from world.camera import WorldCamera
 from world.dynamic_logic import DynamicLogic
 from world.vehicle_dynamics import DrivenPose, FleetDriver
 from world.world_tracker import Detection, WorldObject, WorldTracker
@@ -37,10 +38,14 @@ class WorldPipeline:
         if not selection.sufficient:
             raise ValueError("no metric calibration for this video (see tools/calibrate_camera.py or "
                              "tools/auto_calibrate.py):\n" + selection.report())
-        self.context = RoadContext(selection.chosen, selection)
-
-        self.mapper = CoordinateMapper(image_size[0], image_size[1])
-        self.mapper.homography = self.context.homography
+        simulation = config.get("simulation", {})
+        position = (simulation.get("camera") or {}).get("position")
+        self.camera = WorldCamera.from_hypothesis(selection.chosen, position)
+        self.context = RoadContext(selection.chosen, selection, self.camera)
+        self.mapper = self.camera            # the name the tools used before (one object)
+        # the config's two camera sections - simulation.camera (the Isaac camera) and the
+        # calibration behind H (the world model) - should describe one camera
+        self.camera_mismatch_m = self.camera.consistency_m()
 
         # default_heading: direction of travel along the road (+Y = away from the
         # camera), used for new objects where no traffic flow has been learned yet
@@ -52,10 +57,7 @@ class WorldPipeline:
         self.dynamic_logic.domain = self.context.domain()   # evolution domain of the flows
         self.dynamic_logic.exit_zone = self.context.exit_zone()   # where road users may appear / leave
 
-        simulation = config.get("simulation", {})
-        camera = simulation.get("camera") or {}
-        self.world_tracker = WorldTracker(self.mapper, self.dynamic_logic, image_size,
-                                          camera.get("position"))
+        self.world_tracker = WorldTracker(self.camera, self.dynamic_logic, image_size, position)
         self.fleet: Optional[FleetDriver] = (
             FleetDriver(fps) if simulation.get("vehicle_dynamics", True) else None)
 
@@ -68,7 +70,7 @@ class WorldPipeline:
         Returns (perceived objects, poses to render).
         """
         if frame_transform is not None:
-            self.mapper.set_frame_transform(frame_transform)
+            self.camera.set_frame_transform(frame_transform)
         objects = self.world_tracker.step(list(detections))
         if self.fleet is not None:
             poses = self.fleet.step(objects)

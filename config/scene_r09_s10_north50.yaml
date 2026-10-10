@@ -1,0 +1,196 @@
+# Scene dynamic logic calibration (calibrated, 6 agreeing estimates)
+# focal 8531 px, height 8.55 m, pitch 3.72 deg; 39 lane markings
+# video D:\datasets\TUMTraf-Accid3nD\data\r09_s10\images\s040_camera_basler_north_50mm
+
+video: {path: '${DATASETS}/TUMTraf-Accid3nD/data/r09_s10/images/s040_camera_basler_north_50mm',
+  fps: 25.0}
+yolo:
+  model_path: yolo11s.pt
+  confidence: 0.25
+  classes: [0, 2, 5, 7]
+  tracker_config: bytetrack.yaml
+  imgsz: 1280
+simulation:
+  vehicle_dynamics: true
+  ground_size: 400.0
+  camera:
+    position: [0.0, 0.0, 8.555]
+    pitch_deg: 3.718
+    yaw_deg: -2.86
+    focal_px: 8531.0
+    image_size: [1920, 1200]
+  lane_lines_x: [-4.048, 3.458, 3.633, 7.247, 12.155, 23.561, 27.295]
+  lane_markings:
+  - p:
+    - [11.544, 199.335]
+    - [11.544, 71.308]
+    paint: white
+  - p:
+    - [-7.563, 199.58]
+    - [-7.563, 150.675]
+    paint: white
+  - p:
+    - [-3.876, 186.302]
+    - [-3.876, 178.42]
+    paint: white
+  - p:
+    - [31.164, 199.349]
+    - [31.164, 191.471]
+    paint: white
+  - p:
+    - [7.389, 194.811]
+    - [7.389, 187.224]
+    paint: white
+  - p:
+    - [7.389, 176.886]
+    - [7.389, 169.399]
+    paint: white
+  - p:
+    - [3.633, 173.898]
+    - [3.633, 166.576]
+    paint: white
+  - p:
+    - [20.046, 198.912]
+    - [20.046, 191.664]
+    paint: white
+  - p:
+    - [7.389, 158.231]
+    - [7.389, 151.008]
+    paint: white
+  - p:
+    - [3.633, 192.036]
+    - [3.633, 184.863]
+    paint: white
+  - p:
+    - [23.561, 178.998]
+    - [23.561, 171.851]
+    paint: white
+  - p:
+    - [-3.876, 168.301]
+    - [-3.876, 161.188]
+    paint: white
+  - p:
+    - [20.046, 142.651]
+    - [20.046, 135.668]
+    paint: white
+  - p:
+    - [3.633, 155.138]
+    - [3.633, 148.159]
+    paint: white
+  - p:
+    - [23.561, 197.591]
+    - [23.561, 190.638]
+    paint: white
+  - p:
+    - [20.046, 180.033]
+    - [20.046, 173.081]
+    paint: white
+  - p:
+    - [27.295, 196.136]
+    - [27.295, 189.195]
+    paint: white
+  - p:
+    - [20.046, 161.226]
+    - [20.046, 154.308]
+    paint: white
+  - p:
+    - [23.561, 160.096]
+    - [23.561, 153.217]
+    paint: white
+  - p:
+    - [27.295, 177.46]
+    - [27.295, 170.648]
+    paint: white
+  - p:
+    - [-3.876, 150.297]
+    - [-3.876, 143.559]
+    paint: white
+  - p:
+    - [-4.048, 133.642]
+    - [-4.048, 126.91]
+    paint: white
+  - p:
+    - [-0.192, 132.417]
+    - [-0.192, 125.78]
+    paint: white
+  - p:
+    - [7.389, 139.778]
+    - [7.389, 133.17]
+    paint: white
+  - p:
+    - [7.247, 121.121]
+    - [7.247, 114.536]
+    paint: white
+  - p:
+    - [3.633, 101.844]
+    - [3.633, 95.301]
+    paint: white
+  - p:
+    - [7.247, 103.178]
+    - [7.247, 96.639]
+    paint: white
+  - p:
+    - [-4.048, 115.788]
+    - [-4.048, 109.345]
+    paint: white
+  - p:
+    - [7.247, 84.901]
+    - [7.247, 78.528]
+    paint: white
+  - p:
+    - [3.633, 119.637]
+    - [3.633, 113.274]
+    paint: white
+  - p:
+    - [-4.048, 98.509]
+    - [-4.048, 92.189]
+    paint: white
+  - p:
+    - [-0.192, 120.369]
+    - [-0.192, 114.134]
+    paint: white
+  - p:
+    - [3.458, 83.468]
+    - [3.458, 77.252]
+    paint: white
+  - p:
+    - [-0.499, 108.671]
+    - [-0.499, 102.545]
+    paint: white
+  - p:
+    - [-4.048, 80.957]
+    - [-4.048, 74.848]
+    paint: white
+  - p:
+    - [7.389, 66.871]
+    - [7.389, 62.57]
+    paint: white
+  - p:
+    - [-3.876, 199.968]
+    - [-3.876, 196.825]
+    paint: white
+  - p:
+    - [3.633, 65.658]
+    - [3.633, 62.905]
+    paint: white
+  - p:
+    - [3.633, 133.169]
+    - [3.633, 130.526]
+    paint: white
+mapping:
+  source: auto:scene_logic
+  calibration_points:
+  - - [576.0, 1104.0]
+    - [0.321, 68.761]
+  - - [1344.0, 1104.0]
+    - [6.534, 68.45]
+  - - [672.0, 780.0]
+    - [1.595, 99.285]
+  - - [1248.0, 780.0]
+    - [8.31, 98.95]
+context:
+  allowed_standards: [DE_autobahn]
+stabilization: {enabled: false}
+display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
+vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'qwen2.5vl:7b',
+  interval_s: 4.0, max_side: 1344, timeout_s: 60.0}
