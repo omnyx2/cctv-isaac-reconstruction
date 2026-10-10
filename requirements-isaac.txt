@@ -1,15 +1,24 @@
 # Packages installed into Isaac Sim's own Python (on top of what Isaac Sim bundles).
-# Windows:  C:\isaacsim\python.bat -m pip install -r requirements-isaac.txt
-# Linux:    $ISAAC_SIM/python.sh -m pip install -r requirements-isaac.txt
 #
-# Do NOT pip install torch / torchvision here: Isaac Sim bundles them
-# (exts/omni.isaac.ml_archive). If that torch does not support the GPU (DGX Spark:
-# check docs/DGX_SPARK.md), run YOLO in its own venv instead (requirements-perception.txt,
-# CCTV_PERCEPTION_PYTHON).
+#   <isaac python> -m pip install -r requirements-isaac.txt
+#   <isaac python> -m pip install --no-deps ultralytics==8.4.174 ultralytics-thop==2.2.2
+#
+# (Windows: C:\isaacsim\python.bat; Linux: $ISAAC_SIM/python.sh; tools/setup_spark.sh does both.)
+#
+# ultralytics goes in with --no-deps on purpose: it requires torch, and Isaac Sim's torch
+# lives in an extension (omni.isaac.ml_archive) that pip does not see - a plain install
+# pulls a second torch from PyPI that breaks Isaac Sim's (CPU build, DLL conflicts).
+# Its other dependencies are listed here instead. Never pip install torch here; if
+# Isaac Sim's torch cannot drive the GPU, use a separate venv (requirements-perception.txt,
+# CCTV_PERCEPTION_PYTHON, docs/DGX_SPARK.md).
 #
 # Versions as used and tested on the Windows workstation (Isaac Sim 5.1.0, Python 3.11).
 numpy==1.26.0            # Isaac Sim's compiled extensions need numpy 1.x
 opencv-python==4.11.0.86 # matches numpy 1.26
-ultralytics==8.4.174     # YOLO11 + ByteTrack
 lap==0.5.13              # ByteTrack assignment
 PyYAML>=6.0
+pillow>=10
+matplotlib>=3.8          # ultralytics imports it
+polars>=1.0              # ultralytics
+psutil>=5.9              # ultralytics
+requests>=2.31           # ultralytics

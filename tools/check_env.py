@@ -4,6 +4,8 @@ Run with the Python that will run YOLO:
     Isaac Sim's:   $ISAAC_SIM/python.sh tools/check_env.py      (C:\\isaacsim\\python.bat on Windows)
     or your venv:  $CCTV_PERCEPTION_PYTHON tools/check_env.py
 Prints one line per check, [ok] / [!!], and what to do when something is missing.
+Exit code: 0 all ok; 3 YOLO cannot run on the GPU with this Python (torch / GPU kernels /
+inference) - tools/setup_spark.sh then makes a separate venv; 1 anything else failed.
 """
 
 import importlib
@@ -17,10 +19,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 results = []
+failed = []
+GPU_CHECKS = ("torch", "CUDA", "GPU kernels for this GPU", "CUDA matmul", "YOLO inference")
 
 
 def check(name: str, ok: bool, detail: str = "", fix: str = ""):
     results.append(ok)
+    if not ok:
+        failed.append(name)
     print(f"[{'ok' if ok else '!!'}] {name:28} {detail}" + ("" if ok or not fix else f"\n      -> {fix}"))
 
 
@@ -104,6 +110,10 @@ def main():
     external = os.environ.get("CCTV_PERCEPTION_PYTHON")
     print(f"CCTV_PERCEPTION_PYTHON = {external or '(unset: Isaac Sim Python runs YOLO)'}")
     print(f"{sum(results)}/{len(results)} checks ok")
+    optional = {"Ollama (VLM, optional)", "TUMTraf-Accid3nD", "data/cache"}
+    if any(name in GPU_CHECKS for name in failed):
+        sys.exit(3)
+    sys.exit(0 if not [f for f in failed if f not in optional] else 1)
 
 
 if __name__ == "__main__":
