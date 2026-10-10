@@ -55,7 +55,7 @@ def config_videos():
     for cfg in sorted((ROOT / "config").glob("*.yaml")):
         data = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
         path = (data.get("video") or {}).get("path")
-        if path and "mapping" in data:
+        if path and "mapping" in data and cfg.stem != "TEMPLATE":
             yield cfg.stem, portable(path)
 
 
