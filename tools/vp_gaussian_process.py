@@ -29,12 +29,14 @@ Writes into <dir> (an edge_accumulate blur folder):
   vp_profile.png  R(theta) at the vanishing point
   vp_rays.png     the strongest rays through it on the static edges
   vp_overview.jpg
+  vp.json         the vanishing point (full-resolution pixels)
 
 Usage:
     C:\\isaacsim\\python.bat tools/vp_gaussian_process.py --dir data/results/edge_accum/<video>/blur9
 """
 
 import argparse
+import json
 import math
 import sys
 import time
@@ -295,6 +297,8 @@ def main():
     cv2.imwrite(str(folder / "vp_rays.png"), canvas)
     tiles.append((f"4. strongest rays through the VP on the static edges", canvas))
     cv2.imwrite(str(folder / "vp_overview.jpg"), overview(tiles, width=900), [cv2.IMWRITE_JPEG_QUALITY, 88])
+    (folder / "vp.json").write_text(json.dumps({"vanishing_point": [round(float(vp[0]), 2), round(float(vp[1]), 2)],
+                                                "image_size": [w, h], "log_signal": round(float(y2.max()), 4)}))
     print(f"stage 1: {len(pts1)} evaluations {t1:.1f} s, best ({best1[0]:.0f}, {best1[1]:.0f}); "
           f"stage 2: {len(pts2)} evaluations {t2:.1f} s -> vanishing point ({vp[0]:.1f}, {vp[1]:.1f})")
     return 0
