@@ -86,7 +86,12 @@ class ControlWindow:
                                     ui.Label("s", width=10)
                                     self._seconds = ui.FloatField(width=40)
                                     self._seconds.model.set_value(120.0)    # the scene logic confirms over cycles
+                                with ui.HStack(height=22, spacing=6):
+                                    self._static = ui.CheckBox(width=20)          # off by default: optional, ~4 min with the VLM
+                                    ui.Label("Static objects by the VLM (signs, posts, guardrails; after the calibration, "
+                                             "needs the VLM)", word_wrap=True)
                                 self._calib_status = ui.Label("", height=18, word_wrap=True, visible=False)
+                                self._static_status = ui.Label("", height=18, word_wrap=True, visible=False)
                                 self._lanes_status = ui.Label("", height=18, word_wrap=True, visible=False)
                                 with ui.CollapsableFrame("Calibration conditions / lane markings", collapsed=True, height=0):
                                     with ui.ScrollingFrame(height=140):
@@ -134,6 +139,15 @@ class ControlWindow:
     @property
     def auto_calibrate(self) -> bool:
         return self._auto.model.get_value_as_bool()
+
+    @property
+    def static_objects(self) -> bool:
+        """Scan / draw the static objects of the scenario (tools/static_scan.py)."""
+        return self._static.model.get_value_as_bool()
+
+    def show_static(self, text: str):
+        self._static_status.visible = bool(text)
+        self._static_status.text = text
 
     @property
     def standards(self) -> List[str]:

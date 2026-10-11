@@ -273,8 +273,9 @@ class ReplaySession:
         return True
 
     def set_static_objects(self, objects) -> bool:
-        """Draw the static objects of a static scan (tools/static_scan.py) into the running scene."""
-        if self._vehicles is None or not objects:
+        """Draw the static objects of a static scan (tools/static_scan.py) into the running
+        scene; an empty list removes them."""
+        if self._vehicles is None:
             return False
         import omni.usd
         from simulation.scene_builder import replace_static_objects

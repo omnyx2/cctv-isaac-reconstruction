@@ -81,8 +81,10 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self._lanes_request = None
         self._lanes_source = None
         self._lanes_reviewed = False
-        self.static_job = None                 # tools/static_scan.py, started from the VLM console
+        self.static_job = None                 # tools/static_scan.py: the window's option, or the VLM console
         self._static_drawn = None              # the scenario whose cached static objects are drawn
+        self._static_tried = None              # the scenario scanned automatically (once per start)
+        self._static_manual = None             # the scenario scanned from the VLM console: kept with the option off
         self._last_preview = 0.0
         self._updates = 0
         self._autostart = settings.get(f"{SETTINGS}/autostart_config") or ""
@@ -255,7 +257,7 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
 
     def start_static_scan(self) -> str:
         """Scan the running scenario's static objects in the background (tools/static_scan.py);
-        the answer is the console's status line."""
+        the answer is the status line (console button, or the window's option)."""
         from .calibration import StaticScan
 
         session = self.session
@@ -279,30 +281,58 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             self.static_job.cancel()
             self.static_job = None
         self._static_drawn = None
+        self._static_tried = None
+        self._static_manual = None
 
     def _poll_static(self):
-        """Draw the scenario's cached static objects once, and a finished scan's."""
+        """The window's option 'Static objects by the VLM' (off by default): when on, the
+        scenario's cached objects are drawn, or - none cached - it is scanned once, after
+        the calibration and the lane markings; when off, nothing is drawn. A scan started
+        from the VLM console is drawn when it finishes."""
         from world.static_objects import load_cached
 
         session = self.session
         if session is None or session.state not in (session.RUNNING, session.PAUSED):
             return
         job = self.static_job
-        if job is not None and job.finished:
+        if job is not None:
+            text = f"static objects: {job.state} - {job.progress}"
+            self.window.show_static(text)
+            if self.vlm_window is not None and (job.finished or self.vlm_window.visible):
+                self.vlm_window.show_static(job)
+            if not job.finished:
+                return
             self.static_job = None
             self._static_drawn = None                      # draw the new record
-            if self.vlm_window is not None:
-                self.vlm_window.show_static(job)
-        elif job is not None and self.vlm_window is not None and self.vlm_window.visible:
-            self.vlm_window.show_static(job)
+            manual = not getattr(job, "auto", False)       # from the VLM console: kept with the option off
+        else:
+            manual = False
         key = str(self._lanes_source[0]) if self._lanes_source else None
-        if key is None or self._static_drawn == key:
+        if key is None:
             return
-        self._static_drawn = key
-        objects = load_cached(self.config, self.project_root)
-        placed = [o for o in objects or [] if o.get("action") == "place"]
-        if placed and session.set_static_objects(placed):
-            print(f"[CCTV] static objects: {len(placed)} placed (static scan cache)")
+        if manual:
+            self._static_manual = key
+        if not self.window.static_objects and self._static_manual != key:
+            if self._static_drawn is not None:             # switched off: take them out of the scene
+                session.set_static_objects([])
+                self._static_drawn = None
+                self.window.show_static("")
+            return
+        if self._static_drawn == key:
+            return
+        placed = [o for o in load_cached(self.config, self.project_root) or [] if o.get("action") == "place"]
+        if placed:
+            self._static_drawn = key
+            if session.set_static_objects(placed):
+                print(f"[CCTV] static objects: {len(placed)} placed (static scan cache)")
+                self.window.show_static(f"static objects: {len(placed)} placed")
+            return
+        busy = self.calibration is not None or self.lanes_job is not None
+        if not manual and not busy and self._static_tried != key:  # none cached: scan once
+            self._static_tried = key
+            self.window.show_static(self.start_static_scan())
+            if self.static_job is not None:
+                self.static_job.auto = True                # started by the option
 
     def preview_video(self, video: str):
         """A picked video without a config: its first frame in the window."""
