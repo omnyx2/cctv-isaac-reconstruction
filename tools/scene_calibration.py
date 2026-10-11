@@ -19,6 +19,14 @@ automaton with an estimate from the maps of that moment:
 Two edge existence automata run side by side: a wide blur for the vanishing point and
 the road, a thin one for the dash ends.
 
+The visual conditions (world/visibility_logic.py) choose the work: the illumination is
+measured first (night: held - no calibration, exit 2; twilight: a config only for a
+CALIBRATED camera), the atmosphere once the vanishing point is known (haze or fog: the
+paint is read on the background restored with Koschmieder's law, up to the visibility
+3 / beta - TUM s12 fog, north 16 mm: 0 markings on the foggy background, 36 restored);
+visibility.json and calibration.json carry the
+modes, the measurements and the work.
+
 At the end the lines through the camera's vanishing point are read once more on the
 final maps, and the paint among them goes onto the road as lane markings (the white
 dashes and edge lines of the simulation scene): the dashes of every dashed line (lane
@@ -71,6 +79,7 @@ from tools.edge_accumulate import BATCH, Gpu, all_edges, auto_canny, frame_paths
 from tools.vp_gaussian_process import find_vanishing_points  # noqa: E402
 from world.context.lane_metric import FOCAL_RANGE  # noqa: E402
 from world.context.paint import ROAD_STANDARDS  # noqa: E402
+from world import visibility_logic as vl  # noqa: E402
 from world.scene_logic import DYNAMIC, STATIC, CalibrationLogic, EdgeExistence, edge_automaton  # noqa: E402
 
 ROAD_LEVEL = 0.03            # dynamic map (0..1) above this: something moved there
@@ -178,8 +187,8 @@ def refine_ends(gray: np.ndarray, x1, y1, x2, y2, level: float):
     return xs[a], ys[a], xs[b], ys[b]
 
 
-def clip_to_range(camera, seg):
-    """The part of an image segment on the road between 0 and MAX_RANGE_M (None if none):
+def clip_to_range(camera, seg, range_m: float = MAX_RANGE_M):
+    """The part of an image segment on the road between 0 and range_m (None if none):
     far ends of long solid lines reach the horizon."""
     x1, y1, x2, y2 = seg
     t = np.linspace(0, 1, 200)
@@ -187,7 +196,7 @@ def clip_to_range(camera, seg):
     ok = pts[:, 1] > camera.horizon_y + 8
     g = np.full((len(t), 2), np.nan)
     g[ok] = camera.road_points(pts[ok])
-    ok &= np.isfinite(g[:, 1]) & (g[:, 1] > 0) & (g[:, 1] <= MAX_RANGE_M)
+    ok &= np.isfinite(g[:, 1]) & (g[:, 1] > 0) & (g[:, 1] <= range_m)
     if ok.sum() < 2:
         return None
     a, b = pts[np.argmax(ok)], pts[len(ok) - 1 - np.argmax(ok[::-1])]
@@ -253,13 +262,15 @@ def stripe_width_m(camera, seg, centre_px: float, width_px: float) -> float:
     return float(abs(u[0] * e[1] - u[1] * e[0]))
 
 
-def paint_markings(camera, boundaries, flags, followers, gray: np.ndarray, moved: np.ndarray):
+def paint_markings(camera, boundaries, flags, followers, gray: np.ndarray, moved: np.ndarray,
+                   range_m: float = MAX_RANGE_M):
     """The paint among the lines through the vanishing point, on the road:
     [{"p": [[x1, y1], [x2, y2]], "paint": "white", "w": width}] (road metres; on the
     stripe's centre, dashes to their ends in the image) and the image segments.
     `moved`: where the dynamic map has traffic (not dilated); `camera`: the world's
     camera (world/camera.py WorldCamera) - its homography is the one the world model
-    places the vehicles with, so the markings line up with them."""
+    places the vehicles with, so the markings line up with them. `range_m`: how far the
+    paint is read (the visual conditions may shorten it: world/visibility_logic.py)."""
     asphalt = float(np.median(gray[moved]))
     markings, drawn = [], []
     for i, seg in enumerate(boundaries):
@@ -284,7 +295,7 @@ def paint_markings(camera, boundaries, flags, followers, gray: np.ndarray, moved
             x1, y1, x2, y2 = x1 - c * d[1], y1 + c * d[0], x2 - c * d[1], y2 + c * d[0]   # onto the centre
             if flags[i]:
                 x1, y1, x2, y2 = refine_ends(gray, x1, y1, x2, y2, 0.5 * (sm + asphalt))
-            clipped = clip_to_range(camera, (x1, y1, x2, y2))
+            clipped = clip_to_range(camera, (x1, y1, x2, y2), range_m)
             if clipped is None:
                 continue
             x1, y1, x2, y2 = clipped
@@ -440,6 +451,43 @@ def markings_image(gray: np.ndarray, drawn) -> np.ndarray:
     return img
 
 
+def illumination_check(video: Path, paths, visibility, n_frames: int, samples: int = 25):
+    """The illumination sub-logic on frames spread over the video (before any edge work)."""
+    count = len(paths) if paths is not None else int(cv2.VideoCapture(str(video)).get(cv2.CAP_PROP_FRAME_COUNT))
+    count = min(count, n_frames) if n_frames else count
+    frames = [read_frame(video, int(i), paths) for i in np.linspace(0, max(count - 1, 0), samples)]
+    gray = [cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) for f in frames if f is not None]
+    m = vl.illumination_of(gray) if gray else None
+    mode = visibility.observe(vl.ILLUMINATION.name, m, f"median luminance of {len(gray)} frames", "start")
+    print(f"visual conditions: illumination {mode} (L50 {m if m is None else round(m, 1)})")
+    return mode
+
+
+def atmosphere_check(visibility, gray: np.ndarray, road: np.ndarray, camera):
+    """The atmosphere sub-logic on the background (needs the vanishing point), the
+    precipitation sub-logic (not measured), and the image and range the paint is read on:
+    the background up to MAX_RANGE_M, or - haze, fog - the background restored with
+    Koschmieder's law (world/visibility_logic.py restore: the camera's road distance of
+    each pixel gives its transmission) and read only within the visibility 3 / beta."""
+    m = vl.far_near_contrast(gray, road, camera.vanishing_point)
+    visibility.observe(vl.ATMOSPHERE.name, m, "background contrast far / near on the road", "vanishing point")
+    visibility.observe(vl.PRECIPITATION.name, None, "not measured", "vanishing point")
+    work, range_m, paint_gray, note = visibility.work, MAX_RANGE_M, gray, ""
+    if work.paint == 1:
+        fit = vl.koschmieder_fit(gray, road, camera)
+        if fit is not None:
+            paint_gray, range_m = vl.restore(gray, camera, fit), float(min(MAX_RANGE_M, fit["visibility_m"]))
+            visibility.evidence.add("beta", round(fit["beta"], 5), "1/m", "Koschmieder fit of the road luminance")
+            visibility.evidence.add("airlight", round(fit["A"], 1), "grey level", "Koschmieder fit of the road luminance")
+            visibility.evidence.add("visibility", round(fit["visibility_m"], 1), "m", "3 / beta")
+            note = (f"; restored (beta {fit['beta']:.4f}/m, airlight {fit['A']:.0f}), "
+                    f"visibility {fit['visibility_m']:.0f} m, paint range {range_m:.0f} m")
+        else:
+            note = "; too little road for the fog fit: background as it is"
+    print(f"visual conditions: {visibility.modes} (C_far/near {m if m is None else round(m, 3)}) -> {work.text}{note}")
+    return paint_gray, range_m
+
+
 def scenario_camera(path: Path):
     """A scenario config and the world's camera of it - as world/pipeline.py builds it
     (the admitted calibration's homography, the pinhole model when the config has one)."""
@@ -465,7 +513,8 @@ def scenario_camera(path: Path):
     return config, WorldCamera.from_hypothesis(selection.chosen, cam.get("position"))
 
 
-def markings_for_scenario(args, scenario, camera, video, out, wide, thin, estimate, edges, paths, start) -> int:
+def markings_for_scenario(args, scenario, camera, video, out, wide, thin, estimate, edges, paths, start,
+                          visibility) -> int:
     """--camera-config: the paint of the final maps with the scenario's camera, into the
     lane cache (the record format of tools/extract_lanes.py, method "scene_logic")."""
     from world.context.lane_cache import cache_path
@@ -476,7 +525,12 @@ def markings_for_scenario(args, scenario, camera, video, out, wide, thin, estima
                                       read={"near_vp_px": MARK_NEAR_VP_PX, "min_run_px": MARK_MIN_RUN_PX})
     gray = background_gray(video, paths, len(edges))
     moved = (wide.d > ROAD_LEVEL * wide.d.max()).cpu().numpy()
-    markings, drawn = paint_markings(camera, boundaries, flags, [], gray, moved)
+    paint_gray, range_m = atmosphere_check(visibility, gray, moved, camera)
+    (out / "visibility.json").write_text(json.dumps(visibility.report(), indent=1, default=str))
+    if visibility.work.paint == 0:
+        print(f"  no lane markings: {visibility.work.reason}")
+        return 2
+    markings, drawn = paint_markings(camera, boundaries, flags, [], paint_gray, moved, range_m)
     cv2.imwrite(str(out / "markings.png"), markings_image(gray, drawn))
     (out / "markings.json").write_text(json.dumps(markings))
     print(f"  {len(markings)} lane markings on the road (vanishing point of the scenario's camera "
@@ -550,9 +604,19 @@ def main():
         cameras = sorted(p.name for p in video.iterdir() if p.is_dir() and frame_paths(p))
         sys.exit(f"no frames in {video}" + (f" - pick one camera folder: {', '.join(cameras)}" if cameras else ""))
 
+    visibility = vl.VisibilityLogic()
+    max_frames = int(round(args.seconds * fps_of(video))) if args.seconds > 0 else 0
+    illumination_check(video, frame_paths(video), visibility, max_frames)
+    if visibility.work.calibrate == 0:                                       # e.g. night: hold
+        report = visibility.report()
+        (out / "visibility.json").write_text(json.dumps(report, indent=1, default=str))
+        (out / "calibration.json").write_text(json.dumps({"mode": "held", "visibility": report,
+                                                          "error": "visual conditions: " + visibility.work.text}, indent=1))
+        print(f"held: {visibility.work.text}")
+        return 2
+
     canny = tuple(args.canny) if args.canny else auto_canny(video, frame_paths(video))
     print(f"Canny thresholds {canny[0]:.0f} / {canny[1]:.0f}")
-    max_frames = int(round(args.seconds * fps_of(video))) if args.seconds > 0 else 0
     edges, size_hw, paths = all_edges(video, canny, 24, max_frames)
     h, w = size_hw
     gpu = Gpu(size_hw)
@@ -580,7 +644,8 @@ def main():
     thin.finish()
     wide.finish()
     if world_camera is not None:
-        return markings_for_scenario(args, scenario, world_camera, video, out, wide, thin, estimate, edges, paths, start)
+        return markings_for_scenario(args, scenario, world_camera, video, out, wide, thin, estimate, edges, paths, start,
+                                     visibility)
     mode = logic.step(wide, thin)
     print(f"  end (frame {wide.frames}): cycle {wide.cycles} -> {mode}")
 
@@ -605,26 +670,33 @@ def main():
         road, thin_static = estimate.road(wide, thin)
         est, parts = estimate.at(tuple(cam["vanishing_point"]), wide.static_map(), thin_static, road, wide.cycles,
                                  read={"near_vp_px": MARK_NEAR_VP_PX, "min_run_px": MARK_MIN_RUN_PX})
+        gray = background_gray(video, paths, len(edges))                     # the conditions, with or without paint
+        moved = (wide.d > ROAD_LEVEL * wide.d.max()).cpu().numpy()
+        paint_gray, range_m = atmosphere_check(visibility, gray, moved, world_camera)
         if parts:
-            gray = background_gray(video, paths, len(edges))
-            moved = (wide.d > ROAD_LEVEL * wide.d.max()).cpu().numpy()
-            markings, drawn = paint_markings(world_camera, parts["boundaries"], parts["flags"], parts["followers"],
-                                             gray, moved)
+            markings, drawn = [], []
+            if visibility.work.paint:
+                markings, drawn = paint_markings(world_camera, parts["boundaries"], parts["flags"], parts["followers"],
+                                                 paint_gray, moved, range_m)
             lane_x = sorted(round(float(np.median(world_camera.road_points(np.vstack([b[:, :2], b[:, 2:]]))[:, 0])), 3)
                             for i, b in enumerate(parts["boundaries"]) if i in parts["followers"])
             cv2.imwrite(str(out / "markings.png"), markings_image(gray, drawn))
-            if args.config and (mode == "calibrated" or args.allow_tentative):
+            # twilight: a confirmed camera only (the work's calibrate 1), whatever --allow-tentative says
+            if args.config and (mode == "calibrated" or (args.allow_tentative and visibility.work.calibrate == 2)):
                 shift = camera_motion(video, paths, len(edges), wide.static_map())
                 print(f"  camera motion up to {shift:.1f} px -> stabilization {'on' if shift > MOTION_ON_PX else 'off'}")
                 write_config(Path(args.config), video, fps_of(video), camera, markings, lane_x, standard,
                              [f"Scene dynamic logic calibration ({mode}, {cam['estimates']} agreeing estimates)",
                               f"focal {camera.focal_px:.0f} px, height {camera.height_m:.2f} m, "
                               f"pitch {np.degrees(camera.pitch_rad):.2f} deg; {len(markings)} lane markings",
+                              f"visual conditions {visibility.modes}: {visibility.work.text}",
                               f"video {video}"], stabilize=shift > MOTION_ON_PX)
                 print(f"config written: {args.config}")
         result["markings"] = len(markings)
         (out / "markings.json").write_text(json.dumps(markings))
         print(f"  {len(markings)} lane markings on the road")
+    result["visibility"] = visibility.report()
+    (out / "visibility.json").write_text(json.dumps(result["visibility"], indent=1, default=str))
     ref = tum_reference(out.name)
     if ref:
         result["reference"] = ref

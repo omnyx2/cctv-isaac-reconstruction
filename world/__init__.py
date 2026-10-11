@@ -6,6 +6,9 @@ camera              the world's camera: image <-> road (homography, pinhole mode
                     transform, covariance, distances); the one place image and road meet
 scene_logic         dynamic logic in the image: static / dynamic edges per pixel, and the
                     calibration automaton that estimates the camera
+visibility_logic    dynamic logic of the visual conditions (illumination, atmosphere,
+                    precipitation): which calibration work the image allows; completeness
+                    checked by verify(); Koschmieder restoration of the road in fog
 dynamic_logic       dynamic logic on the road, per road user: Kalman, motion mode, heading,
                     flow, coasting, existence
 scene_consistency   footprints, overlap test (SAT), overlap resolution
