@@ -44,6 +44,13 @@ process (`calibration.py`), the scene dynamic logic over the first N seconds (de
    model (`simulation.camera`, `mapping.calibration_points`), and the lane markings - the
    paint among the lines (dashes, edge lines; not guard rails) on the road
 
+Before and during this the visual conditions (`world/visibility_logic.py`) choose the
+work: at night nothing is calibrated (the panel shows "held: ... night"), at twilight a
+config is written only for a CALIBRATED camera, and in haze or fog the paint is read on
+the background restored with Koschmieder's law (the camera's road distance of each
+pixel), up to the visibility. Rain is not measured (UNKNOWN). The logic's completeness
+is checked by `tools/visibility_check.py`.
+
 The extension then selects that config and replays the video on it from the start.
 Without a calibration the window says why (the estimates' reasons). Road: the country's
 standard, or "any" (each estimate tries all and keeps the one most lines follow).

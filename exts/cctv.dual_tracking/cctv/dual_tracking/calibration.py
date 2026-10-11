@@ -97,7 +97,9 @@ class BackgroundTool:
         else:
             self.state = self.FAILED
             if code == 2:
-                self.progress = self.NOT_FOUND
+                # the visual conditions held the work back (world/visibility_logic.py): say why
+                held = [l for l in self.lines if l.startswith("held:") or l.strip().startswith("no lane markings:")]
+                self.progress = held[-1].strip() if held else self.NOT_FOUND
             else:
                 self.progress = f"error (exit {code}): " + (self._tail[-1] if self._tail else "")
                 self.lines += self._tail
