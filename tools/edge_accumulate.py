@@ -73,9 +73,15 @@ def read_frame(video: Path, index: int, paths=None) -> np.ndarray:
     return frame if ok else None
 
 
-def canny_packed(frame: np.ndarray, canny) -> np.ndarray:
+def canny_packed(frame: np.ndarray, canny, thumb_width: int = 0):
+    """Bit-packed 0/1 Canny edges; with thumb_width also a small grey thumbnail (the
+    traffic is measured on it: world/traffic_logic.py)."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    return np.packbits(cv2.Canny(gray, canny[0], canny[1]) > 0, axis=1)
+    packed = np.packbits(cv2.Canny(gray, canny[0], canny[1]) > 0, axis=1)
+    if not thumb_width:
+        return packed
+    h = max(int(round(gray.shape[0] * thumb_width / gray.shape[1])), 1)
+    return packed, cv2.resize(gray, (thumb_width, h), interpolation=cv2.INTER_AREA)
 
 
 CANNY_HIGH_MAX = 150.0          # the fixed thresholds (50, 150) of a well-contrasted video
@@ -102,15 +108,16 @@ def auto_canny(video: Path, paths=None, samples: int = 25):
     return high / 3, high
 
 
-def all_edges(video: Path, canny, workers: int, max_frames: int = 0):
-    """Bit-packed 0/1 edges of every frame (the first `max_frames` if > 0), and the frame size."""
+def all_edges(video: Path, canny, workers: int, max_frames: int = 0, thumb_width: int = 0):
+    """Bit-packed 0/1 edges of every frame (the first `max_frames` if > 0), and the frame
+    size; with thumb_width also the grey thumbnails (N x h x w uint8) as a fourth value."""
     paths = frame_paths(video)
     if paths is not None and max_frames > 0:
         paths = paths[:max_frames]
     with ThreadPoolExecutor(workers) as pool:          # OpenCV releases the GIL
         if paths is not None:
             size = cv2.imread(str(paths[0])).shape[:2]
-            edges = list(pool.map(lambda p: canny_packed(cv2.imread(str(p)), canny), paths))
+            edges = list(pool.map(lambda p: canny_packed(cv2.imread(str(p)), canny, thumb_width), paths))
         else:
             capture, futures = cv2.VideoCapture(str(video)), []
             while max_frames <= 0 or len(futures) < max_frames:
@@ -118,9 +125,11 @@ def all_edges(video: Path, canny, workers: int, max_frames: int = 0):
                 if not ok:
                     break
                 size = frame.shape[:2]
-                futures.append(pool.submit(canny_packed, frame, canny))
+                futures.append(pool.submit(canny_packed, frame, canny, thumb_width))
             capture.release()
             edges = [f.result() for f in futures]
+    if thumb_width:
+        return [e for e, _ in edges], size, paths, np.stack([t for _, t in edges])
     return edges, size, paths
 
 

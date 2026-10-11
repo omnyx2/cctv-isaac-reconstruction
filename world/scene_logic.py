@@ -104,7 +104,7 @@ class EdgeExistence:
         self.mode[dropped] = DYNAMIC
         self.cycles += 1
         n = float(keep.numel())
-        self.history.append({"cycle": self.cycles, "frame": self.frames,
+        self.history.append({"cycle": self.cycles, "frame": self.frames, "drop": round(float(self.drop), 3),
                              "static": round(float(keep.sum()) / n, 5),
                              "appeared": round(float((keep & was_dynamic).sum()) / n, 5),
                              "vanished": round(float((dropped & was_static).sum()) / n, 5)})

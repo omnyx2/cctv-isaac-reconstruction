@@ -51,6 +51,14 @@ the background restored with Koschmieder's law (the camera's road distance of ea
 pixel), up to the visibility. Rain is not measured (UNKNOWN). The logic's completeness
 is checked by `tools/visibility_check.py`.
 
+The traffic situation (`world/traffic_logic.py`) is measured per 2 s window - speed,
+density, standing vehicles - and plans the lane markings: windows with standing,
+congested or crawling traffic are left out, slow or dense ones drop at 0.35 instead of
+0.2, in a second pair of edge existence automata (the camera's see every frame, as
+before). A queue on the far carriageway (TUM s06) now gets its paint (0 -> 56
+markings); a jam throughout (UA-DETRAC 40871) gets none ("paint held"). Checked by
+`tools/traffic_check.py`.
+
 The extension then selects that config and replays the video on it from the start.
 Without a calibration the window says why (the estimates' reasons). Road: the country's
 standard, or "any" (each estimate tries all and keeps the one most lines follow).
