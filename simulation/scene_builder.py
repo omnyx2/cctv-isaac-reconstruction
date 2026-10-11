@@ -133,6 +133,55 @@ def _create_lane_markings(stage, markings: Sequence[dict]):
         xform.AddScaleOp().Set(Gf.Vec3f(length, float(m.get("w") or MARKING_WIDTH_M), 0.01))
 
 
+STATIC_COLORS = {"traffic sign": (0.15, 0.35, 0.85), "sign post or pole": (0.6, 0.6, 0.62), "lamp post": (0.5, 0.5, 0.52),
+                 "guardrail": (0.75, 0.75, 0.78), "concrete barrier": (0.7, 0.69, 0.66), "fence or noise wall": (0.45, 0.5, 0.45)}
+LINE_WIDTH_M = {"guardrail": 0.1, "concrete barrier": 0.4, "fence or noise wall": 0.2}
+
+
+def replace_static_objects(stage, objects: Sequence[dict]):
+    """Swap the scene's static objects for `objects` (tools/static_scan.py records, the
+    placed ones): posts and signs as a pole (a sign with a plate on top), guardrails,
+    barriers and walls as boxes along their road segment."""
+    import math
+    from pxr import Gf, UsdGeom
+
+    if stage.GetPrimAtPath("/World/StaticObjects"):
+        stage.RemovePrim("/World/StaticObjects")
+    for i, o in enumerate(objects):
+        road = o.get("road")
+        if o.get("action") != "place" or not road:
+            continue
+        color = Gf.Vec3f(*STATIC_COLORS.get(o["label"], (0.6, 0.6, 0.6)))
+        height = float(road.get("height_m") or 1.0)
+        if road["shape"] in ("post", "plate"):
+            x, y = road["at"]
+            pole = UsdGeom.Cylinder.Define(stage, f"/World/StaticObjects/Obj_{i}/Pole")
+            pole.CreateRadiusAttr(0.06)
+            pole.CreateHeightAttr(height)
+            pole.CreateAxisAttr("Z")
+            pole.CreateDisplayColorAttr([Gf.Vec3f(0.55, 0.55, 0.57)])
+            UsdGeom.Xformable(pole).AddTranslateOp().Set(Gf.Vec3d(x, y, height / 2))
+            if o["label"] == "traffic sign" or road["shape"] == "plate":
+                plate = UsdGeom.Cube.Define(stage, f"/World/StaticObjects/Obj_{i}/Plate")
+                plate.CreateSizeAttr(1.0)
+                plate.CreateDisplayColorAttr([color])
+                xf = UsdGeom.Xformable(plate)
+                xf.AddTranslateOp().Set(Gf.Vec3d(x, y, height))
+                xf.AddScaleOp().Set(Gf.Vec3f(1.2, 0.05, 0.9))
+        elif road["shape"] == "line":
+            (x1, y1), (x2, y2) = road["p"]
+            length = math.hypot(x2 - x1, y2 - y1)
+            if length < 0.2:
+                continue
+            box = UsdGeom.Cube.Define(stage, f"/World/StaticObjects/Obj_{i}")
+            box.CreateSizeAttr(1.0)
+            box.CreateDisplayColorAttr([color])
+            xf = UsdGeom.Xformable(box)
+            xf.AddTranslateOp().Set(Gf.Vec3d((x1 + x2) / 2, (y1 + y2) / 2, height / 2))
+            xf.AddRotateZOp().Set(math.degrees(math.atan2(y2 - y1, x2 - x1)))
+            xf.AddScaleOp().Set(Gf.Vec3f(length, LINE_WIDTH_M.get(o["label"], 0.2), height))
+
+
 def show_camera_in_viewport(camera_path: str = CAMERA_PATH) -> bool:
     """Make the CCTV camera the active viewport camera."""
     try:

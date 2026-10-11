@@ -1,5 +1,6 @@
 """VLM Console: connection, model, timing, prompt, on-demand tests, statistics and
-results of the vision-language scene analysis. Every change applies to the next
+results of the vision-language scene analysis, and the static-object scan of the running
+scenario (tools/static_scan.py: the static map in pieces, each named by the VLM). Every change applies to the next
 analysis; nothing here blocks the replay (perception/vlm/analyzer.py)."""
 
 from pathlib import Path
@@ -31,7 +32,10 @@ class VLMWindow:
         self._shown_version = -1
         self._models = [controller.settings["model"]]
         self._thumb = ui.ByteImageProvider()
+        self._static_picture = ui.ByteImageProvider()
+        self._static_shown = None
         self._sections = {}
+        self.on_static_scan: Optional[Callable[[], str]] = None      # set by the extension
 
         self.window = ui.Window("CCTV VLM Console", width=620, height=900)
         with self.window.frame:
@@ -41,6 +45,7 @@ class VLMWindow:
                     self._build_run()
                     self._build_prompt()
                     self._build_test()
+                    self._build_static()
                     self._build_stats()
                     self._build_results()
         self.refresh_models()
@@ -139,6 +144,41 @@ class VLMWindow:
                 self._test_status = ui.Label("", height=18, word_wrap=True)
                 ui.ImageWithProvider(self._thumb, width=THUMB_WIDTH, height=THUMB_WIDTH * 10 // 16,
                                      fill_policy=ui.IwpFillPolicy.IWP_PRESERVE_ASPECT_FIT)
+
+    def _build_static(self):
+        with self._section("Static objects (scan)"):
+            with ui.VStack(spacing=4, height=0):
+                ui.Label("The running scenario's static map is cut into pieces; the VLM names each piece "
+                         "(one crop per request, 4 at a time), the camera places signs, posts, guardrails and "
+                         "barriers in the scene. Lane paint is decided by the paint test, not the VLM.",
+                         height=48, word_wrap=True, style={"color": 0xFF999999})
+                with ui.HStack(height=26, spacing=6):
+                    ui.Button("Scan static objects", clicked_fn=self._scan_static)
+                self._static_status = ui.Label("", height=18, word_wrap=True)
+                self._static_summary = ui.Label("", height=36, word_wrap=True)
+                ui.ImageWithProvider(self._static_picture, width=THUMB_WIDTH, height=THUMB_WIDTH * 10 // 16,
+                                     fill_policy=ui.IwpFillPolicy.IWP_PRESERVE_ASPECT_FIT)
+
+    def _scan_static(self):
+        if self.on_static_scan is None:
+            self._static_status.text = "not available"
+            return
+        self._static_status.text = self.on_static_scan()
+
+    def show_static(self, job):
+        """Progress of a static scan (extension._poll_static), and its picture when done."""
+        self._static_status.text = f"{job.state}: {job.progress}"
+        if job.finished and job.state == job.DONE:
+            self._static_summary.text = job.progress
+        picture = getattr(job, "picture", None)
+        if job.finished and picture is not None and picture.exists() and self._static_shown != picture.stat().st_mtime:
+            self._static_shown = picture.stat().st_mtime
+            image = cv2.imread(str(picture))
+            if image is not None:
+                h, w = image.shape[:2]
+                size = (THUMB_WIDTH * 2, int(round(h * THUMB_WIDTH * 2 / w)))
+                rgba = cv2.cvtColor(cv2.resize(image, size, interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGBA)
+                self._static_picture.set_data_array(np.ascontiguousarray(rgba), [size[0], size[1]])
 
     def _build_stats(self):
         with self._section("Status and timing"):

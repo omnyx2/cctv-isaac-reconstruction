@@ -55,7 +55,16 @@ The traffic situation (`world/traffic_logic.py`) is measured per 2 s window - sp
 density, standing vehicles - and plans the lane markings: windows with standing,
 congested or crawling traffic are left out, slow or dense ones drop at 0.35 instead of
 0.2, in a second pair of edge existence automata (the camera's see every frame, as
-before). A queue on the far carriageway (TUM s06) now gets its paint (0 -> 56
+before). VLM Console, "Static objects (scan)": with a scenario running and the VLM reachable,
+`tools/static_scan.py` cuts the static map's structures off the road into pieces and asks
+the VLM what each is (a crop from the background and two frames, one request per crop, 4
+at a time - several crops in one request agreed on 12-48 % only); a piece the paint test
+takes is lane paint whatever the VLM answers. Confirmed signs, posts, guardrails and
+barriers within 400 m are placed in the scene (cached in data/cache/static_objects/, drawn
+again when the scenario starts); bridges and gantries are recorded. About 4 minutes per
+video (TUM s10 north 50 mm: 82 pieces, 6 objects placed). Checked by tools/static_check.py.
+
+A queue on the far carriageway (TUM s06) now gets its paint (0 -> 56
 markings); a jam throughout (UA-DETRAC 40871) gets none ("paint held"). Checked by
 `tools/traffic_check.py`.
 

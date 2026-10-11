@@ -272,6 +272,16 @@ class ReplaySession:
         self.config.setdefault("simulation", {})["lane_markings"] = markings
         return True
 
+    def set_static_objects(self, objects) -> bool:
+        """Draw the static objects of a static scan (tools/static_scan.py) into the running scene."""
+        if self._vehicles is None or not objects:
+            return False
+        import omni.usd
+        from simulation.scene_builder import replace_static_objects
+
+        replace_static_objects(omni.usd.get_context().get_stage(), objects)
+        return True
+
     def toggle_pause(self):
         if self.state == self.RUNNING:
             self.state = self.PAUSED

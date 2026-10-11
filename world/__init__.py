@@ -12,6 +12,8 @@ visibility_logic    dynamic logic of the visual conditions (illumination, atmosp
 traffic_logic       dynamic logic of the traffic situation per 2 s window (speed, density,
                     standing vehicles): which windows and which drop the paint's edge
                     existence uses
+static_objects      the static map's structures off the road in pieces, named by the VLM (one
+                    crop per request), the paint test outranking it; placed by the camera
 sublogic            the shared form: a condition as a hysteresis automaton over one measured
                     quantity, and the exact completeness check of it and of a selection
 dynamic_logic       dynamic logic on the road, per road user: Kalman, motion mode, heading,
