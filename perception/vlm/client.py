@@ -94,7 +94,9 @@ class OllamaClient(VLMClient):
             "prompt": prompt,
             "images": [base64.b64encode(encode_jpeg(image_bgr, self.max_side)).decode("ascii")],
             "stream": False,
-            "options": {"temperature": self.temperature},
+            # num_ctx: Ollama otherwise reserves the model's full context (262k tokens for qwen3-vl,
+            # 45 GB instead of 20 GB). One image + prompt + answer fits in 8k.
+            "options": {"temperature": self.temperature, "num_ctx": 8192},
         }
         if self.json_format:
             payload["format"] = "json"

@@ -40,3 +40,5 @@ exts."cctv.dual_tracking".quit_on_finish = false
 # VLM: analyze replay frames periodically from the start / log every result to data/results/vlm/extension_log.jsonl
 exts."cctv.dual_tracking".vlm_periodic = false
 exts."cctv.dual_tracking".vlm_log = false
+# Ollama model for the VLM console and periodic analysis (empty = config/TEMPLATE.yaml)
+exts."cctv.dual_tracking".vlm_model = ""
