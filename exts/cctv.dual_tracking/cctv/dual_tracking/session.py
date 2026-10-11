@@ -102,10 +102,23 @@ def perception_python() -> Optional[str]:
     external = external_perception_python()
     if external:
         return external
-    if Path(sys.executable).stem.lower().startswith("python"):
+    if running_in_own_python():
         return None
     candidate = Path(sys.prefix) / ("python.exe" if sys.platform == "win32" else "bin/python3")
     return str(candidate) if candidate.exists() else None
+
+
+def running_in_own_python() -> bool:
+    """sys.executable is this process's own Python interpreter. Inside Kit it is the Kit
+    binary on Windows, but on Linux it can be the system Python (/usr/bin/python3) though
+    the interpreter is Isaac Sim's in sys.prefix: count it only when it lives in sys.prefix."""
+    executable = Path(sys.executable)
+    if not executable.stem.lower().startswith("python"):
+        return False
+    try:
+        return Path(sys.prefix).resolve() in executable.resolve().parents
+    except OSError:
+        return True
 
 
 def perception_import_paths(modules=("torch", "ultralytics", "cv2", "numpy", "yaml")) -> List[str]:

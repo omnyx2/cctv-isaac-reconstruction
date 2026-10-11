@@ -9,6 +9,7 @@ as a thread vs ~19 ms alone). It also keeps CUDA out of the Isaac Sim process.
 
 import multiprocessing as mp
 import queue
+import sys
 import time
 import traceback
 from dataclasses import dataclass
@@ -128,7 +129,15 @@ class PerceptionWorker:
             target=_process_main, name="perception", daemon=True,
             args=(self.video_path, self.fps, self.yolo_config, self.stabilize, self._queue, self._stop,
                   self.extra_paths, int(start_frame)))
-        self._process.start()
+        # The spawned child replaces its sys.path with this process's before it imports this
+        # module (numpy at the top), so extra_paths must be on sys.path while it starts: inside
+        # Kit on Linux the extension packages (numpy, torch) are not on sys.path.
+        saved_path = list(sys.path)
+        sys.path[:0] = [p for p in self.extra_paths if p not in sys.path]
+        try:
+            self._process.start()
+        finally:
+            sys.path[:] = saved_path
 
     def stop(self):
         if self._process is None:
