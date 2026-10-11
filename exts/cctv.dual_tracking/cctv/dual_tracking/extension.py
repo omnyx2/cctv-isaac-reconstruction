@@ -81,6 +81,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         self._lanes_request = None
         self._lanes_source = None
         self._lanes_reviewed = False
+        self.static_job = None                 # tools/static_scan.py, started from the VLM console
+        self._static_drawn = None              # the scenario whose cached static objects are drawn
         self._last_preview = 0.0
         self._updates = 0
         self._autostart = settings.get(f"{SETTINGS}/autostart_config") or ""
@@ -115,6 +117,7 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
                                     on_start_video=self.calibrate_and_start,
                                     on_video_picked=self.preview_video)
         self.vlm_window = VLMWindow(self.vlm, self.project_root, self._current_frame)
+        self.vlm_window.on_static_scan = self.start_static_scan
         from .setup_window import SetupWindow
         self.setup_window = SetupWindow(self.project_root)
         if not setup_env.get(setup_env.KEY_SETUP_OK, False) and not self._autostart:
@@ -139,6 +142,7 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             self.calibration.cancel()
             self.calibration = None
         self._cancel_lanes()
+        self._cancel_static()
         config_path = config_path if config_path.is_absolute() else self.project_root / config_path
         try:
             config = load_config(config_path, self.project_root, video_override)
@@ -246,6 +250,59 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
         else:
             job.state, job.progress = job.FAILED, "extracted, but nothing in the cache for this scenario"
         self.window.show_lanes(job)
+
+    # ------------------------------------------------------------------ static objects (VLM console)
+
+    def start_static_scan(self) -> str:
+        """Scan the running scenario's static objects in the background (tools/static_scan.py);
+        the answer is the console's status line."""
+        from .calibration import StaticScan
+
+        session = self.session
+        if session is None or session.state not in (session.RUNNING, session.PAUSED) or self._lanes_source is None:
+            return "start a scenario first: the scan uses its camera"
+        if self.calibration is not None:
+            return "wait for the calibration: the scan needs the camera"
+        if self.static_job is not None and not self.static_job.finished:
+            return "a scan is running"
+        problem = self.vlm._client().check()
+        if problem:
+            return f"VLM unavailable: {problem}"
+        config_path, video = self._lanes_source
+        self.static_job = StaticScan(self.project_root, config_path, video, self.vlm.settings["url"],
+                                     self.vlm.settings["model"], seconds=self.window.calibration_seconds)
+        print(f"[CCTV] scanning the static objects of {config_path.name} (VLM {self.vlm.settings['model']})")
+        return "scanning: static map, then one VLM request per crop, 4 at a time (~4 min)"
+
+    def _cancel_static(self):
+        if self.static_job is not None:
+            self.static_job.cancel()
+            self.static_job = None
+        self._static_drawn = None
+
+    def _poll_static(self):
+        """Draw the scenario's cached static objects once, and a finished scan's."""
+        from world.static_objects import load_cached
+
+        session = self.session
+        if session is None or session.state not in (session.RUNNING, session.PAUSED):
+            return
+        job = self.static_job
+        if job is not None and job.finished:
+            self.static_job = None
+            self._static_drawn = None                      # draw the new record
+            if self.vlm_window is not None:
+                self.vlm_window.show_static(job)
+        elif job is not None and self.vlm_window is not None and self.vlm_window.visible:
+            self.vlm_window.show_static(job)
+        key = str(self._lanes_source[0]) if self._lanes_source else None
+        if key is None or self._static_drawn == key:
+            return
+        self._static_drawn = key
+        objects = load_cached(self.config, self.project_root)
+        placed = [o for o in objects or [] if o.get("action") == "place"]
+        if placed and session.set_static_objects(placed):
+            print(f"[CCTV] static objects: {len(placed)} placed (static scan cache)")
 
     def preview_video(self, video: str):
         """A picked video without a config: its first frame in the window."""
@@ -401,6 +458,7 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             self.setup_window.poll()
         self._poll_calibration()
         self._poll_lanes()
+        self._poll_static()
         now = time.perf_counter()
         if now - self._last_console >= CONSOLE_INTERVAL_S:
             self._last_console = now
@@ -462,6 +520,8 @@ class CCTVDualTrackingExtension(omni.ext.IExt):
             self.calibration.cancel()
         if getattr(self, "lanes_job", None) is not None:
             self.lanes_job.cancel()
+        if getattr(self, "static_job", None) is not None:
+            self.static_job.cancel()
         self._update_sub = None
         if getattr(self, "vlm", None) is not None:
             self.vlm.shutdown()

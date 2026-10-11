@@ -132,6 +132,24 @@ class AutoCalibration(BackgroundTool):
         return self.config_path.exists()
 
 
+class StaticScan(BackgroundTool):
+    """The static objects of the running scenario (tools/static_scan.py): the static map in
+    pieces, each named by the VLM (one crop per request, `parallel` at a time), placed on the
+    road with the scenario's camera; cached in data/cache/static_objects/."""
+    PREFIX = "static"
+    NOT_FOUND = "no static object placed (see the scan picture)"
+
+    def __init__(self, project_root: Path, config_path: Path, video: Optional[str], vlm_url: str, vlm_model: str,
+                 seconds: float = 120.0, views: int = 3, parallel: int = 4):
+        self.config_path = Path(config_path)
+        self.picture = Path(project_root) / "data" / "results" / "static_scan" / self.config_path.stem / "scan.jpg"
+        args = ["--config", self.config_path, "--seconds", seconds, "--views", views, "--parallel", parallel,
+                "--vlm-url", vlm_url, "--vlm-model", vlm_model, "--log-prefix", self.PREFIX]
+        if video:
+            args += ["--video", video]
+        super().__init__(project_root, "static_scan.py", args)
+
+
 class LaneExtraction(BackgroundTool):
     PREFIX = "lanes"
     NOT_FOUND = "no lane markings found"
