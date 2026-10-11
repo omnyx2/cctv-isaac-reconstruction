@@ -544,6 +544,11 @@ def main():
     video, out = Path(expand(args.video)), Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     start = time.time()
+    if not video.exists():
+        sys.exit(f"no video at {video}")
+    if video.is_dir() and not frame_paths(video):
+        cameras = sorted(p.name for p in video.iterdir() if p.is_dir() and frame_paths(p))
+        sys.exit(f"no frames in {video}" + (f" - pick one camera folder: {', '.join(cameras)}" if cameras else ""))
 
     canny = tuple(args.canny) if args.canny else auto_canny(video, frame_paths(video))
     print(f"Canny thresholds {canny[0]:.0f} / {canny[1]:.0f}")
