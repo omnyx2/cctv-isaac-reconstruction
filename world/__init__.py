@@ -9,6 +9,11 @@ scene_logic         dynamic logic in the image: static / dynamic edges per pixel
 visibility_logic    dynamic logic of the visual conditions (illumination, atmosphere,
                     precipitation): which calibration work the image allows; completeness
                     checked by verify(); Koschmieder restoration of the road in fog
+traffic_logic       dynamic logic of the traffic situation per 2 s window (speed, density,
+                    standing vehicles): which windows and which drop the paint's edge
+                    existence uses
+sublogic            the shared form: a condition as a hysteresis automaton over one measured
+                    quantity, and the exact completeness check of it and of a selection
 dynamic_logic       dynamic logic on the road, per road user: Kalman, motion mode, heading,
                     flow, coasting, existence
 scene_consistency   footprints, overlap test (SAT), overlap resolution

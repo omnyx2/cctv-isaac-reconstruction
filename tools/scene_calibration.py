@@ -27,6 +27,17 @@ paint is read on the background restored with Koschmieder's law, up to the visib
 visibility.json and calibration.json carry the
 modes, the measurements and the work.
 
+The traffic situation (world/traffic_logic.py; --traffic off: not used) is measured on
+grey thumbnails made in pass 1, window by window (2 s): speed, density, standing vehicles.
+It plans the paint: when a window is left out (many standing vehicles, congested,
+crawling) or asks for another drop (slow or dense: 0.35), the paint is read from a second
+pair of edge existence automata that flow only in the admitted windows and drop each
+cycle at its windows' highest drop (TUM s06 south 50 mm, a queue on the far carriageway:
+0 -> 56 markings). The camera's automata see every frame at the base drop: leaving
+windows out did not help the camera (UA-DETRAC 20011: a wrong tentative camera, 5673 px
+against the hand-made 974 px, where every frame gave none), and a higher drop made it
+worse (TUM s06: focal -5.2 % -> -12.9 %). traffic.json carries the windows.
+
 At the end the lines through the camera's vanishing point are read once more on the
 final maps, and the paint among them goes onto the road as lane markings (the white
 dashes and edge lines of the simulation scene): the dashes of every dashed line (lane
@@ -79,6 +90,7 @@ from tools.edge_accumulate import BATCH, Gpu, all_edges, auto_canny, frame_paths
 from tools.vp_gaussian_process import find_vanishing_points  # noqa: E402
 from world.context.lane_metric import FOCAL_RANGE  # noqa: E402
 from world.context.paint import ROAD_STANDARDS  # noqa: E402
+from world import traffic_logic as tl  # noqa: E402
 from world import visibility_logic as vl  # noqa: E402
 from world.scene_logic import DYNAMIC, STATIC, CalibrationLogic, EdgeExistence, edge_automaton  # noqa: E402
 
@@ -514,7 +526,7 @@ def scenario_camera(path: Path):
 
 
 def markings_for_scenario(args, scenario, camera, video, out, wide, thin, estimate, edges, paths, start,
-                          visibility) -> int:
+                          visibility, paint_held: bool = False) -> int:
     """--camera-config: the paint of the final maps with the scenario's camera, into the
     lane cache (the record format of tools/extract_lanes.py, method "scene_logic")."""
     from world.context.lane_cache import cache_path
@@ -529,6 +541,9 @@ def markings_for_scenario(args, scenario, camera, video, out, wide, thin, estima
     (out / "visibility.json").write_text(json.dumps(visibility.report(), indent=1, default=str))
     if visibility.work.paint == 0:
         print(f"  no lane markings: {visibility.work.reason}")
+        return 2
+    if paint_held:
+        print("  no lane markings: traffic - no window fit for the paint")
         return 2
     markings, drawn = paint_markings(camera, boundaries, flags, [], paint_gray, moved, range_m)
     cv2.imwrite(str(out / "markings.png"), markings_image(gray, drawn))
@@ -545,6 +560,44 @@ def markings_for_scenario(args, scenario, camera, video, out, wide, thin, estima
                                 "reviewed": False, "review": None, "markings": markings}), encoding="utf-8")
     print(f"written: {path} ({time.time() - start:.0f} s)")
     return 0
+
+
+def traffic_check(args, gpu, thumbs, video: Path, out: Path):
+    """The traffic sub-logics over the video's windows and the plan of the edge existence
+    (world/traffic_logic.py); None with --traffic off."""
+    if args.traffic == "off":
+        return None
+    traffic = tl.plan(gpu.torch, thumbs, fps_of(video), gpu.device)
+    (out / "traffic.json").write_text(json.dumps({"summary": traffic.summary(), "windows": traffic.windows}, indent=1))
+    s = traffic.summary()
+    print(f"traffic: {s['windows']} windows of {tl.WINDOW_S:g} s, {s['left_out']} left out; {s['admitted']} / "
+          f"{s['frames']} frames flow; paint drops {s['paint_drops']}; modes {s['modes']}")
+    return traffic
+
+
+class TrafficFlow:
+    """Per frame: whether it flows into the edge existence (the traffic plan's windows) and,
+    per paint automaton, the drop of the running cycle (the highest paint drop of the
+    windows it contains)."""
+
+    def __init__(self, traffic, drop: float):
+        self.traffic, self.base = traffic, drop
+        self.cycle = {"wide": None, "thin": None}
+
+    def keep(self, i: int) -> bool:
+        if self.traffic is None:
+            return True
+        if not self.traffic.admit[i]:
+            return False
+        d = float(self.traffic.drop[i])
+        for k in self.cycle:
+            self.cycle[k] = d if self.cycle[k] is None else max(self.cycle[k], d)
+        return True
+
+    def cycle_drop(self, which: str) -> float:
+        d = self.cycle[which]
+        self.cycle[which] = None
+        return self.base if d is None or self.traffic is None else d
 
 
 def fps_of(video: Path) -> float:
@@ -576,6 +629,9 @@ def main():
     parser.add_argument("--config", default="", help="also write a runnable scenario config here (CALIBRATED only)")
     parser.add_argument("--allow-tentative", action="store_true",
                         help="write --config for a TENTATIVE camera too (a new video: nothing else to replay it with)")
+    parser.add_argument("--traffic", choices=("on", "off"), default="on",
+                        help="the traffic situation chooses the windows and drops of the edge existence "
+                             "(world/traffic_logic.py); off: every frame, --drop (test)")
     parser.add_argument("--no-road", action="store_true", help="read lines everywhere, not only on the road (test)")
     parser.add_argument("--lines-from", choices=("static", "edgesum"), default="static",
                         help="image the lines through the vanishing point are found in (test)")
@@ -617,9 +673,10 @@ def main():
 
     canny = tuple(args.canny) if args.canny else auto_canny(video, frame_paths(video))
     print(f"Canny thresholds {canny[0]:.0f} / {canny[1]:.0f}")
-    edges, size_hw, paths = all_edges(video, canny, 24, max_frames)
+    edges, size_hw, paths, thumbs = all_edges(video, canny, 24, max_frames, tl.THUMB_WIDTH)
     h, w = size_hw
     gpu = Gpu(size_hw)
+    traffic = traffic_check(args, gpu, thumbs, video, out)
     wide = EdgeExistence(gpu.torch, size_hw, gpu.device, args.drop)
     thin = EdgeExistence(gpu.torch, size_hw, gpu.device, args.drop)
     estimate, last = make_estimator((w, h), standards, np.random.default_rng(args.seed), print,
@@ -627,10 +684,22 @@ def main():
     logic = CalibrationLogic(estimate, w)
     print(f"{len(edges)} frames {w}x{h}; edge existence and calibration automata:")
     print("\n".join("  " + line for line in (edge_automaton(args.drop).describe() + "\n" + logic.automaton.describe()).split("\n")))
+    flows = TrafficFlow(traffic, args.drop)
+    paint = None                                                             # the paint's automata (the traffic plan)
+    if traffic is not None and traffic.differs:
+        paint = {"wide": EdgeExistence(gpu.torch, size_hw, gpu.device, args.drop),
+                 "thin": EdgeExistence(gpu.torch, size_hw, gpu.device, args.drop)}
+        print(f"paint: its own edge existence automata - {traffic.summary()['left_out']} windows left out, "
+              f"drops {traffic.summary()['paint_drops']}")
     for s in range(0, len(edges), BATCH):                                    # the hybrid program
         packed = gpu.unpack(edges[s:s + BATCH])
         e_wide, e_thin = gpu.blur(packed, args.blur)[:, 0], gpu.blur(packed, args.thin_blur)[:, 0]
         for k in range(len(packed)):
+            if paint is not None and flows.keep(s + k):                      # the paint: the windows the plan admits
+                for name, e in (("wide", e_wide[k]), ("thin", e_thin[k])):
+                    if paint[name].flow(e):
+                        paint[name].drop = flows.cycle_drop(name)
+                        paint[name].renormalize()
             if thin.flow(e_thin[k]):
                 thin.renormalize()
             if wide.flow(e_wide[k]):
@@ -643,9 +712,18 @@ def main():
                       f"-> {mode}", flush=True)
     thin.finish()
     wide.finish()
+    if paint is not None:
+        for name in ("wide", "thin"):
+            paint[name].drop = flows.cycle_drop(name)
+            paint[name].finish()
+    paint_wide, paint_thin = (paint["wide"], paint["thin"]) if paint is not None else (wide, thin)
+    paint_held = traffic is not None and traffic.hold
+    if paint_held:                                                           # no window for the paint: none read
+        print("paint held: traffic - no window fit for the paint (standing, congested or crawling throughout)")
+        paint_wide, paint_thin = wide, thin                                  # the maps of the conditions only
     if world_camera is not None:
-        return markings_for_scenario(args, scenario, world_camera, video, out, wide, thin, estimate, edges, paths, start,
-                                     visibility)
+        return markings_for_scenario(args, scenario, world_camera, video, out, paint_wide, paint_thin, estimate, edges,
+                                     paths, start, visibility, paint_held)
     mode = logic.step(wide, thin)
     print(f"  end (frame {wide.frames}): cycle {wide.cycles} -> {mode}")
 
@@ -653,6 +731,8 @@ def main():
     standard = ((logic.ctx.accepted or logic.ctx.pool or [{}])[-1]).get("standard") or names[0]
     result = {"mode": mode, "image_size": [w, h], "standard": standard, "cycles": wide.cycles,
               "edge_history": wide.history}
+    if traffic is not None:
+        result["traffic"] = traffic.summary()
     if cam:
         result.update(focal_px=round(cam["focal_px"], 1), height_m=round(cam["height_m"], 3),
                       pitch_deg=round(cam["pitch_deg"], 3), yaw_deg=round(cam["yaw_deg"], 3),
@@ -667,15 +747,15 @@ def main():
 
         camera = CameraModel.from_vanishing_point(tuple(cam["vanishing_point"]), cam["focal_px"], (w, h), cam["height_m"])
         world_camera = WorldCamera.from_model(camera, "scene_logic")
-        road, thin_static = estimate.road(wide, thin)
-        est, parts = estimate.at(tuple(cam["vanishing_point"]), wide.static_map(), thin_static, road, wide.cycles,
-                                 read={"near_vp_px": MARK_NEAR_VP_PX, "min_run_px": MARK_MIN_RUN_PX})
+        road, thin_static = estimate.road(paint_wide, paint_thin)            # the paint's maps
+        est, parts = estimate.at(tuple(cam["vanishing_point"]), paint_wide.static_map(), thin_static, road,
+                                 paint_wide.cycles, read={"near_vp_px": MARK_NEAR_VP_PX, "min_run_px": MARK_MIN_RUN_PX})
         gray = background_gray(video, paths, len(edges))                     # the conditions, with or without paint
-        moved = (wide.d > ROAD_LEVEL * wide.d.max()).cpu().numpy()
+        moved = (paint_wide.d > ROAD_LEVEL * paint_wide.d.max()).cpu().numpy()
         paint_gray, range_m = atmosphere_check(visibility, gray, moved, world_camera)
         if parts:
             markings, drawn = [], []
-            if visibility.work.paint:
+            if visibility.work.paint and not paint_held:
                 markings, drawn = paint_markings(world_camera, parts["boundaries"], parts["flags"], parts["followers"],
                                                  paint_gray, moved, range_m)
             lane_x = sorted(round(float(np.median(world_camera.road_points(np.vstack([b[:, :2], b[:, 2:]]))[:, 0])), 3)
