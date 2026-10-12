@@ -1,0 +1,27 @@
+<section id="playground" data-transition="fade" style="background:#F7F5EF;color:#14213D;font-family:'Nunito Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:16px">
+<p style="font-size:28px;color:#B85C00;font-weight:700;letter-spacing:2px;text-transform:uppercase">Step 8 · VLM playground</p>
+<h2 style="font-family:'Fredoka', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1">Step 6 + the VLM Console</h2>
+</div>
+<div style="display:flex;gap:48px;align-items:start">
+<img src="/_blob/99fc3fb17309952c85e1f8899b5ef42e" alt="Isaac Sim replay at 21.3 FPS with the CCTV VLM Console showing qwen3-vl:30b-a3b-instruct answers" style="width:880px;height:550px;object-fit:contain;border-radius:16px;background:#14213D">
+<div style="flex:1;display:flex;flex-direction:column;gap:24px">
+<ol style="font-size:28px;color:#4A5568;line-height:1.5">
+<li><b style="color:#14213D">Connection</b> › Check / refresh (the q4 model is already picked)</li>
+<li><b style="color:#14213D">Run settings</b> › tick periodic</li>
+<li>Press <b style="color:#14213D">Start</b>: an answer every 4 s</li>
+</ol>
+<div style="display:flex;gap:24px">
+<div style="flex:1;display:flex;flex-direction:column;gap:4px;background:#FFFFFF;padding:24px;border:2px solid #D9DEE7;border-radius:16px">
+<h3 style="font-family:'Fredoka', Arial, sans-serif;font-size:44px;font-weight:600;color:#2F6FBF">4–5 s</h3>
+<p style="font-size:24px;color:#4A5568">per answer, 0 errors</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:4px;background:#FFFFFF;padding:24px;border:2px solid #D9DEE7;border-radius:16px">
+<h3 style="font-family:'Fredoka', Arial, sans-serif;font-size:44px;font-weight:600;color:#2F6FBF">18–21 FPS</h3>
+<p style="font-size:24px;color:#4A5568">with VLM on (25 off)</p>
+</div>
+</div>
+</div>
+</div>
+<aside>No new script: run ./06_run_extension.sh again. The Ollama server from step 7 keeps running in the background. The console is not the VLM itself; it is the window that asks the server and shows the answers. The VLM runs in the separate Ollama server; a worker thread inside Isaac Sim takes only the newest frame, so the video never waits for the VLM. Measured 2026-10-11 with qwen3-vl 30B-A3B q4 over three runs: 6 to 7 answers on the bus stop video and 23 on the expressway, 2.6 to 6.3 s each, 0 errors, no accident wrongly reported, at least 76 GB of memory always free. The FPS drop is most likely Ollama and YOLO sharing the same GPU.</aside>
+</section>

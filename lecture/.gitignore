@@ -1,0 +1,4 @@
+# Made while running the lab, not part of it
+ollama.log
+__pycache__/
+.~lock.*

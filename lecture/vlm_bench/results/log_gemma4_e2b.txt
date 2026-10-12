@@ -1,0 +1,188 @@
+== gemma4:e2b
+   thinking model: think=false
+   load 6.5s  
+   scene_json s20011_0001         1.4s  {   "summary": "Traffic is moving on a multi-lane road with some vehic
+   scene_json s20011_0200         1.4s  {   "summary": "Traffic is flowing on a multi-lane road with vehicles 
+   scene_json s20011_0400         1.4s  {   "summary": "Traffic is flowing on a multi-lane road with some vehi
+   scene_json s20011_0600         1.3s  {   "summary": "Traffic is flowing on a multi-lane road with several v
+   scene_json s40191_0001         1.3s  {   "summary": "Traffic is flowing on a multi-lane highway under overc
+   scene_json s40191_0800         1.3s  {   "summary": "Heavy traffic is visible on a multi-lane highway under
+   scene_json s40191_1600         1.3s  {   "summary": "Heavy traffic is visible on a multi-lane highway under
+   scene_json s40191_2400         1.3s  {   "summary": "Traffic is flowing on a multi-lane highway under overc
+   scene_json c20012              1.2s  {   "summary": "Traffic is moving on a multi-lane road with several ve
+   scene_json c20032              1.2s  {   "summary": "Traffic is flowing on a multi-lane road with moderate 
+   scene_json c20034              1.2s  {   "summary": "Traffic is flowing on a multi-lane road with moderate 
+   scene_json c20051              1.4s  {   "summary": "Traffic is moving on a multi-lane road with some vehic
+   scene_json c20061              1.4s  {   "summary": "Traffic is moving on a multi-lane road with moderate c
+   scene_json c20064              1.4s  {   "summary": "Traffic is moving on a multi-lane road with some vehic
+   scene_json c39761              1.3s  {   "summary": "Traffic is moving on a multi-lane road with some vehic
+   scene_json c39781              1.2s  {   "summary": "Traffic is moving on a multi-lane road with several ve
+   scene_json c39811              1.3s  {   "summary": "Traffic is moving along a multi-lane road with some ve
+   scene_json c39851              1.3s  {   "summary": "Traffic is moving on a multi-lane road at night with v
+   scene_json c39931              1.2s  {   "summary": "Traffic is flowing on a multi-lane road with several v
+   scene_json c40141              1.3s  {   "summary": "Traffic is flowing on a wet road with moderate congest
+   scene_json c40161              1.3s  {   "summary": "Traffic is moving on a multi-lane road with several bu
+   scene_json c40172              1.3s  {   "summary": "Several vehicles are visible on a road with a pedestri
+   scene_json c40201              1.2s  {   "summary": "Traffic is flowing on a multi-lane road with numerous 
+   scene_json c40212              1.3s  {   "summary": "Several vehicles are moving on a multi-lane road under
+   scene_json c40243              1.3s  {   "summary": "Traffic is flowing on a multi-lane highway under what 
+   scene_json c40732              1.3s  {   "summary": "Traffic is flowing on a multi-lane road with various v
+   scene_json c40871              1.4s  {   "summary": "Heavy traffic is visible on a wet road under what appe
+   scene_json c40981              1.3s  {   "summary": "Traffic is flowing on a multi-lane road at night.",   
+   scene_json c41063              1.3s  {   "summary": "Traffic is flowing on a multi-lane highway with severa
+   scene_json c63521              1.3s  {   "summary": "Traffic is moving slowly on a wet road with several ve
+   scene_json c63552              1.3s  {   "summary": "Several vehicles are moving on a multi-lane highway wi
+   scene_json c63561              1.3s  {   "summary": "Traffic is moving on a wet road with multiple vehicles
+   scene_json acc1                1.3s  {   "summary": "A car is stopped on the side of the road, partially ob
+   scene_json acc2                1.3s  {   "summary": "A vehicle is stopped on the side of a road in a rural,
+   scene_json acc3                1.5s  {   "summary": "Emergency vehicles are present at a roadside incident 
+   scene_json acc4                1.5s  {   "summary": "A damaged truck is stopped in the snow on the side of 
+   scene_json acc5                1.6s  {   "summary": "There is a traffic incident with several vehicles stop
+   scene_json acc6                1.3s  {   "summary": "Two cars are stopped on a crosswalk with two people st
+   scene_json acc7                1.3s  {   "summary": "Traffic is stopped at a red light with several vehicle
+   scene_json acc8                1.4s  {   "summary": "A dark gray Hyundai i30 is driving on a road next to a
+   scene_json acc9                1.4s  {   "summary": "A white car is driving past a building with a pedestri
+   scene_json acc10               1.3s  {   "summary": "The image shows railway tracks with some green and gre
+   scene_json acc11               1.3s  {   "summary": "A blue truck is parked partially on the side of a narr
+   scene_json acc12               1.7s  {   "summary": "The image shows the damaged front end of a vehicle on 
+   scene_json acc13               1.3s  {   "summary": "A vehicle is stopped on the shoulder of a road beneath
+   scene_json acc15               1.5s  {   "summary": "A large pile of wrecked and overturned vehicles is vis
+   scene_json acc16               1.3s  {   "summary": "Several people and emergency vehicles are gathered aro
+   scene_json acc18               1.4s  {   "summary": "A yellow tow truck is driving on a road lined with tre
+   scene_json acc19               1.4s  {   "summary": "A large, likely overloaded truck is stopped or parked 
+   scene_json acc20               1.3s  {   "summary": "A vintage car is driving on a narrow, wet road alongsi
+   scene_json neg1                1.3s  {   "summary": "Heavy traffic is visible on a multi-lane road under an
+   scene_json neg2                1.4s  {   "summary": "Several large trucks are traveling on a multi-lane hig
+   scene_json neg3                1.3s  {   "summary": "Heavy traffic is visible on a multi-lane motorway unde
+   scene_json neg4                1.2s  {   "summary": "A vehicle is driving on a road under an overcast sky."
+   scene_json neg5                1.3s  {   "summary": "Several vehicles are driving on a multi-lane road unde
+   scene_json neg6                1.4s  {   "summary": "Several vehicles are stopped or moving along the roads
+   scene_json neg7                1.3s  {   "summary": "Several vehicles are visible on a road at night with s
+   scene_json neg8                1.2s  {   "summary": "A green utility vehicle is driving on a road with some
+   accident   s20011_0001         0.2s  no
+   accident   s20011_0200         0.2s  no
+   accident   s20011_0400         0.2s  no
+   accident   s20011_0600         0.2s  no
+   accident   s40191_0001         0.2s  no
+   accident   s40191_0800         0.2s  no
+   accident   s40191_1600         0.2s  no
+   accident   s40191_2400         0.2s  no
+   accident   c20012              0.2s  no
+   accident   c20032              0.2s  no
+   accident   c20034              0.2s  no
+   accident   c20051              0.2s  no
+   accident   c20061              0.2s  no
+   accident   c20064              0.2s  no
+   accident   c39761              0.2s  no
+   accident   c39781              0.2s  no
+   accident   c39811              0.2s  no
+   accident   c39851              0.2s  no
+   accident   c39931              0.2s  no
+   accident   c40141              0.2s  no
+   accident   c40161              0.2s  no
+   accident   c40172              0.2s  no
+   accident   c40201              0.2s  no
+   accident   c40212              0.2s  no
+   accident   c40243              0.2s  no
+   accident   c40732              0.2s  no
+   accident   c40871              0.2s  no
+   accident   c40981              0.2s  no
+   accident   c41063              0.2s  no
+   accident   c63521              0.2s  no
+   accident   c63552              0.2s  no
+   accident   c63561              0.2s  no
+   accident   acc1                0.2s  no
+   accident   acc2                0.2s  no
+   accident   acc3                0.2s  yes
+   accident   acc4                0.2s  yes
+   accident   acc5                0.3s  yes
+   accident   acc6                0.2s  no
+   accident   acc7                0.3s  no
+   accident   acc8                0.3s  no
+   accident   acc9                0.3s  no
+   accident   acc10               0.3s  no
+   accident   acc11               0.2s  no
+   accident   acc12               0.3s  yes
+   accident   acc13               0.3s  no
+   accident   acc15               0.3s  yes
+   accident   acc16               0.2s  no
+   accident   acc18               0.3s  no
+   accident   acc19               0.3s  no
+   accident   acc20               0.3s  no
+   accident   neg1                0.2s  no
+   accident   neg2                0.3s  no
+   accident   neg3                0.2s  no
+   accident   neg4                0.2s  no
+   accident   neg5                0.2s  no
+   accident   neg6                0.3s  no
+   accident   neg7                0.3s  no
+   accident   neg8                0.2s  no
+   count      s20011_0001_near    0.2s  4
+   count      s20011_0200_near    0.2s  2
+   count      s20011_0400_near    0.2s  3
+   count      s20011_0600_near    0.2s  1
+   count      s40191_0001_near    0.2s  5
+   count      s40191_0800_near    0.2s  4
+   count      s40191_1600_near    0.2s  7
+   count      s40191_2400_near    0.2s  8
+   count      c20012_near         0.2s  4
+   count      c20032_near         0.2s  11
+   count      c20034_near         0.2s  3
+   count      c20051_near         0.2s  1
+   count      c20061_near         0.2s  4
+   count      c20064_near         0.2s  4
+   count      c39761_near         0.2s  2
+   count      c39781_near         0.2s  1
+   count      c39811_near         0.2s  0
+   count      c39851_near         0.2s  1
+   count      c39931_near         0.2s  3
+   count      c40141_near         0.2s  3
+   count      c40161_near         0.2s  0
+   count      c40172_near         0.2s  2
+   count      c40201_near         0.2s  3
+   count      c40212_near         0.2s  3
+   count      c40243_near         0.2s  4
+   count      c40732_near         0.2s  14
+   count      c40871_near         0.2s  10
+   count      c40981_near         0.2s  4
+   count      c41063_near         0.2s  2
+   count      c63521_near         0.2s  2
+   count      c63552_near         0.2s  0
+   count      c63561_near         0.2s  1
+   attributes s20011_0001         0.5s  {"bus": false, "truck": false, "people_waiting": true, "two_way": true
+   attributes s20011_0200         0.4s  {"bus": false, "truck": false, "people_waiting": true, "two_way": true
+   attributes s20011_0400         0.4s  {"bus": false, "truck": false, "people_waiting": true, "two_way": true
+   attributes s20011_0600         0.4s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes s40191_0001         0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes s40191_0800         0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes s40191_1600         0.4s  {"bus": true, "truck": true, "people_waiting": false, "two_way": true}
+   attributes s40191_2400         0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c20012              0.4s  {"bus": true, "truck": false, "people_waiting": false, "two_way": true
+   attributes c20032              0.4s  {"bus": false, "truck": false, "people_waiting": true, "two_way": true
+   attributes c20034              0.4s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c20051              0.5s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c20061              0.5s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c20064              0.4s  {"bus": false, "truck": true, "people_waiting": true, "two_way": true}
+   attributes c39761              0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c39781              0.4s  {"bus": false, "truck": false, "people_waiting": true, "two_way": true
+   attributes c39811              0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c39851              0.4s  {"bus": true, "truck": false, "people_waiting": false, "two_way": true
+   attributes c39931              0.4s  {"bus": true, "truck": false, "people_waiting": false, "two_way": true
+   attributes c40141              0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c40161              0.5s  {"bus": true, "truck": false, "people_waiting": false, "two_way": true
+   attributes c40172              0.4s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c40201              0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c40212              0.5s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c40243              0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c40732              0.4s  {"bus": true, "truck": false, "people_waiting": false, "two_way": true
+   attributes c40871              0.4s  {"bus": true, "truck": false, "people_waiting": false, "two_way": true
+   attributes c40981              0.5s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c41063              0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c63521              0.5s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c63552              0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c63561              0.5s  {"bus": true, "truck": false, "people_waiting": false, "two_way": true
+   korean     s20011_0001         0.8s  제공해주신 이미지는 **도시의 교통 상황을 보여주는 CCTV 화면**으로 보입니다.  이 장면은 **다수의 차량들이 도로를 따
+   korean     c39851              0.7s  제공해주신 이미지는 **야간 도로의 교통 상황을 포착한 CCTV 영상**으로 보입니다.  도로 위에는 여러 대의 차량들이 주행
+   korean     acc6                0.7s  이 CCTV 장면은 도로 위에서 두 대의 차량과 두 사람이 포착된 모습을 담고 있습니다. 한쪽에는 은색 차량과 분홍색 차량이 
+   korean     neg3                0.7s  이 CCTV 장면은 **고속도로에서 차량들이 이동하고 있는 모습을 포착하고 있습니다.** 도로 양쪽으로는 나무들이 보이며, 여
+   -> /home/user/AI_CCTV_PROJ/lecture/vlm_bench/results/gemma4_e2b.jsonl

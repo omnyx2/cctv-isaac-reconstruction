@@ -1,0 +1,187 @@
+== qwen3-vl:30b-a3b-instruct
+   load 5.7s  
+   scene_json s20011_0001         3.9s  {"summary": "A high-angle view of a multi-lane urban road with moderat
+   scene_json s20011_0200         2.1s  {"summary": "A busy multi-lane road with cars in motion and a bus stop
+   scene_json s20011_0400         2.1s  {"summary": "A busy multi-lane road with cars in motion and a bus stop
+   scene_json s20011_0600         2.2s  {"summary": "A multi-lane road with moderate traffic, a bus, and a tax
+   scene_json s40191_0001         2.1s  {"summary": "A multi-lane highway with two directions of traffic separ
+   scene_json s40191_0800         2.2s  {"summary": "A multi-lane highway with moderate traffic flowing in bot
+   scene_json s40191_1600         2.2s  {"summary": "A multi-lane highway with moderate traffic flowing in bot
+   scene_json s40191_2400         2.2s  {"summary": "A multi-lane highway with moderate traffic flowing in bot
+   scene_json c20012              2.2s  {"summary": "A city street with multiple lanes of traffic, a bus stopp
+   scene_json c20032              2.2s  {"summary": "A wide, multi-lane road with moderate traffic flowing in 
+   scene_json c20034              2.3s  {"summary": "A wide, multi-lane road with moderate traffic flowing in 
+   scene_json c20051              2.5s  {   "summary": "A busy multi-lane road with heavy traffic, a bus, and 
+   scene_json c20061              2.6s  {   "summary": "A wide, multi-lane road with moderate traffic flow, a 
+   scene_json c20064              2.2s  {"summary": "A multi-lane road with moderate traffic, a car turning ac
+   scene_json c39761              2.2s  {"summary": "A wide, multi-lane road with moderate traffic moving in b
+   scene_json c39781              2.1s  {"summary": "A multi-lane road with moving traffic, a median barrier, 
+   scene_json c39811              2.2s  {"summary": "A multi-lane road with moving traffic, a median strip, an
+   scene_json c39851              2.3s  {"summary": "A nighttime view of a multi-lane road with traffic moving
+   scene_json c39931              2.6s  {   "summary": "A multi-lane road with several cars, including two tax
+   scene_json c40141              2.2s  {"summary": "A multi-lane city road is wet and busy with traffic movin
+   scene_json c40161              2.2s  {"summary": "A wet, multi-lane road with traffic moving in both direct
+   scene_json c40172              2.4s  {"summary": "A view of a wet multi-lane road with moving traffic, incl
+   scene_json c40201              2.2s  {   "summary": "A multi-lane highway with moderate traffic moving in b
+   scene_json c40212              2.1s  {"summary": "Multiple cars are moving on a multi-lane highway with a c
+   scene_json c40243              2.1s  {"summary": "A multi-lane highway with moderate traffic flowing in bot
+   scene_json c40732              2.1s  {"summary": "A multi-lane urban road with cars, a articulated bus, and
+   scene_json c40871              2.5s  {   "summary": "A multi-lane highway is experiencing heavy traffic con
+   scene_json c40981              2.0s  {"summary": "Multiple vehicles are moving on a multi-lane highway at n
+   scene_json c41063              2.1s  {"summary": "A multi-lane highway with several cars in motion, separat
+   scene_json c63521              2.3s  {"summary": "A wet, multi-lane road with moving and parked vehicles, a
+   scene_json c63552              2.1s  {"summary": "A multi-lane highway with several cars moving in both dir
+   scene_json c63561              2.3s  {   "summary": "A multi-lane highway with vehicles moving in both dire
+   scene_json acc1                2.6s  {"summary": "A car has crashed into a hedge on the side of a road, wit
+   scene_json acc2                2.9s  {"summary": "A car has crashed into a ditch on the shoulder of a road,
+   scene_json acc3                2.6s  {"summary": "An overturned black car lies on its side in a travel lane
+   scene_json acc4                2.7s  {"summary": "A red truck cab has crashed into a snowbank, with its tra
+   scene_json acc5                3.0s  {   "summary": "A traffic accident scene at a busy intersection with a
+   scene_json acc6                2.9s  {   "summary": "Two cars have collided at an intersection, with two pe
+   scene_json acc7                2.9s  {"summary": "A nighttime traffic accident at an intersection with mult
+   scene_json acc8                2.7s  {"summary": "A grey Hyundai i30 hatchback with visible front-end damag
+   scene_json acc9                2.7s  {"summary": "A white car has collided with a yellow taxi on a city str
+   scene_json acc10               2.5s  {"summary": "A green truck is overturned on the grass verge next to a 
+   scene_json acc11               2.5s  {"summary": "A blue van is overturned on its side in a ditch between t
+   scene_json acc12               2.5s  {"summary": "A black car is overturned on its side in a travel lane at
+   scene_json acc13               3.1s  {"summary": "A traffic accident involving a white pickup truck that ha
+   scene_json acc15               2.5s  {"summary": "Two trucks are overturned on the side of the road, blocki
+   scene_json acc16               2.7s  {"summary": "A traffic accident involving a large overturned container
+   scene_json acc18               2.6s  {"summary": "A yellow tow truck is parked on a residential street with
+   scene_json acc19               2.6s  {   "summary": "A truck has overturned on its side in a travel lane.",
+   scene_json acc20               2.6s  {"summary": "A white car is parked on the side of a wet road, with its
+   scene_json neg1                2.5s  {   "summary": "A multi-lane highway is experiencing heavy traffic con
+   scene_json neg2                2.8s  {   "summary": "A multi-lane highway shows heavy traffic with a long q
+   scene_json neg3                4.8s  {   "summary": "A multi-lane motorway is experiencing heavy congestion
+   scene_json neg4                2.4s  {"summary": "A black car with 'Hooked Highways' branding is driving on
+   scene_json neg5                2.4s  {"summary": "A traffic queue on a multi-lane motorway with a lane clos
+   scene_json neg6                2.2s  {"summary": "A police car is parked on the side of the road in front o
+   scene_json neg7                2.2s  {"summary": "A police car with flashing blue lights is stopped on the 
+   scene_json neg8                2.2s  {"summary": "A green and yellow Eurotow tow truck is parked on the sid
+   accident   s20011_0001         0.1s  no
+   accident   s20011_0200         0.1s  no
+   accident   s20011_0400         0.1s  no
+   accident   s20011_0600         0.1s  no
+   accident   s40191_0001         0.1s  no
+   accident   s40191_0800         0.1s  no
+   accident   s40191_1600         0.1s  no
+   accident   s40191_2400         0.1s  no
+   accident   c20012              0.1s  no
+   accident   c20032              0.1s  no
+   accident   c20034              0.1s  no
+   accident   c20051              0.1s  no
+   accident   c20061              0.1s  no
+   accident   c20064              0.1s  no
+   accident   c39761              0.1s  no
+   accident   c39781              0.1s  no
+   accident   c39811              0.1s  no
+   accident   c39851              0.1s  no
+   accident   c39931              0.1s  no
+   accident   c40141              0.1s  no
+   accident   c40161              0.1s  no
+   accident   c40172              0.1s  no
+   accident   c40201              0.1s  no
+   accident   c40212              0.1s  no
+   accident   c40243              0.1s  no
+   accident   c40732              0.1s  no
+   accident   c40871              0.1s  no
+   accident   c40981              0.1s  no
+   accident   c41063              0.1s  no
+   accident   c63521              0.1s  no
+   accident   c63552              0.1s  no
+   accident   c63561              0.1s  no
+   accident   acc1                0.1s  yes
+   accident   acc2                0.1s  yes
+   accident   acc3                0.1s   yes
+   accident   acc4                0.1s  yes
+   accident   acc5                0.2s  yes
+   accident   acc6                0.1s  yes
+   accident   acc7                0.1s  yes
+   accident   acc8                0.1s   yes
+   accident   acc9                0.1s  yes
+   accident   acc10               0.1s   yes
+   accident   acc11               0.1s  yes
+   accident   acc12               0.2s   yes
+   accident   acc13               0.1s   yes
+   accident   acc15               0.1s  yes
+   accident   acc16               0.1s  yes
+   accident   acc18               0.1s  yes
+   accident   acc19               0.1s  yes
+   accident   acc20               0.1s  no
+   accident   neg1                0.1s  no
+   accident   neg2                0.1s  no
+   accident   neg3                0.1s  no
+   accident   neg4                0.1s  no
+   accident   neg5                0.1s  no
+   accident   neg6                0.1s  no
+   accident   neg7                0.1s  no
+   accident   neg8                0.1s  no
+   count      s20011_0001_near    3.0s  3
+   count      s20011_0200_near    1.0s  2
+   count      s20011_0400_near    1.0s  3
+   count      s20011_0600_near    1.0s  1
+   count      s40191_0001_near    1.0s  5
+   count      s40191_0800_near    1.0s  3
+   count      s40191_1600_near    1.0s  6
+   count      s40191_2400_near    1.0s  5
+   count      c20012_near         1.0s  4
+   count      c20032_near         1.0s  1
+   count      c20034_near         1.0s  2
+   count      c20051_near         1.0s  1
+   count      c20061_near         1.0s  3
+   count      c20064_near         1.0s  3
+   count      c39761_near         1.0s  1
+   count      c39781_near         1.0s  1
+   count      c39811_near         1.0s  0
+   count      c39851_near         1.0s  1
+   count      c39931_near         1.0s  1
+   count      c40141_near         1.0s  3
+   count      c40161_near         1.0s  0
+   count      c40172_near         1.0s  1
+   count      c40201_near         1.0s  3
+   count      c40212_near         1.0s  2
+   count      c40243_near         1.0s  4
+   count      c40732_near         1.0s  11
+   count      c40871_near         1.0s  8
+   count      c40981_near         1.0s  4
+   count      c41063_near         1.0s  1
+   count      c63521_near         1.0s  1
+   count      c63552_near         1.0s  2
+   count      c63561_near         1.0s  1
+   attributes s20011_0001         1.3s  {"bus": false, "truck": false, "people_waiting": true, "two_way": true
+   attributes s20011_0200         1.3s  {"bus": false, "truck": true, "people_waiting": true, "two_way": true}
+   attributes s20011_0400         1.3s  {"bus": false, "truck": false, "people_waiting": true, "two_way": true
+   attributes s20011_0600         1.3s  {"bus": true, "truck": true, "people_waiting": true, "two_way": true}
+   attributes s40191_0001         1.3s  {"bus": false, "truck": true, "people_waiting": false, "two_way": true
+   attributes s40191_0800         1.3s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes s40191_1600         1.3s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes s40191_2400         1.3s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c20012              1.3s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c20032              1.3s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c20034              1.3s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c20051              1.3s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c20061              1.3s  {"bus": true, "truck": true, "people_waiting": true, "two_way": true}
+   attributes c20064              1.3s  {"bus": false, "truck": true, "people_waiting": true, "two_way": true}
+   attributes c39761              1.3s  {"bus": false, "truck": true, "people_waiting": true, "two_way": true}
+   attributes c39781              1.3s  {"bus": false, "truck": false, "people_waiting": true, "two_way": true
+   attributes c39811              1.3s  {"bus": false, "truck": true, "people_waiting": false, "two_way": true
+   attributes c39851              1.3s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c39931              1.3s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c40141              1.3s  {"bus": true, "truck": true, "people_waiting": false, "two_way": true}
+   attributes c40161              1.3s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c40172              1.3s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c40201              1.3s  {"bus": false, "truck": true, "people_waiting": false, "two_way": true
+   attributes c40212              1.3s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c40243              1.3s  {"bus": true, "truck": false, "people_waiting": false, "two_way": true
+   attributes c40732              1.3s  {"bus": true, "truck": true, "people_waiting": true, "two_way": true}
+   attributes c40871              1.3s  {"bus": true, "truck": false, "people_waiting": false, "two_way": true
+   attributes c40981              1.3s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c41063              1.3s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes c63521              1.3s  {"bus": true, "truck": false, "people_waiting": true, "two_way": true}
+   attributes c63552              1.3s  {"bus": false, "truck": true, "people_waiting": false, "two_way": true
+   attributes c63561              1.3s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   korean     s20011_0001         1.1s  이 장면은 도시의 다중 차선 도로를 위에서 내려다본 것으로, 중앙 분리대를 사이에 두고 양방향으로 차량이 흐르고 있다. 좌측에
+   korean     c39851              0.6s  밤에 촬영된 도로의 CCTV 영상이다. 도로 중앙선을 따라 차량들이 주행하고 있으며, 양쪽에는 버스 정류장과 사람들이 보인다.
+   korean     acc6                1.7s  교차로의 횡단보도에서 회색 스테이션 왜건과 핑크색 세단이 충돌한 사고 현장이다. 두 차량 사이에 서 있는 여성과 남성이 사고를
+   korean     neg3                1.0s  이 영상은 흐린 날씨 속 고속도로의 교통 상황을 보여주고 있다. 왼쪽 차선은 원활하게 통행하고 있지만, 오른쪽 차선은 트럭과 
+   -> /home/user/AI_CCTV_PROJ/lecture/vlm_bench/results/qwen3-vl_30b-a3b-instruct.jsonl

@@ -1,0 +1,4 @@
+qwen3-vl:32b-instruct: the whole desktop container was killed by an OOM during this run (2026-10-10 22:47, while another model was downloading); not rerun
+qwen2.5vl:72b: OOM again (2026-10-10 ~23:54, ~5 min after measurement started, est. 60GB); mem_guard did not catch it; not rerun
+llama3.2-vision:90b: not run; user decision 2026-10-11: models this large (72b and up) are not run on this DGX Spark after two OOMs
+llama4:scout: not run; same reason (larger than 72b)

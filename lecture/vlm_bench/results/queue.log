@@ -1,0 +1,6 @@
+23:05:00 ollama server started (OLLAMA_MAX_LOADED_MODELS=1)
+23:16:28 PULLED qwen3-vl:30b-a3b-instruct-q8_0 688s
+23:21:43 BENCHED qwen3-vl:30b-a3b-instruct-q8_0
+23:43:32 DONE ALREADY qwen3-vl:30b-a3b-instruct-q8_0
+23:49:13 PULLED qwen2.5vl:72b 341s
+23:49:13 MEASURING qwen2.5vl:72b (estimated 60GB, free 115GB)
