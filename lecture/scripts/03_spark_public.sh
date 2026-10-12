@@ -69,19 +69,32 @@ if [ "$MODE" = fill ]; then
   done
 
   say "VLM models -> $PUB_OLLAMA"
-  # A second Ollama server on another port, storing into the shared folder; the normal one is not touched.
+  # A second Ollama server on another port; the normal one is not touched. It downloads onto the local disk
+  # first: Ollama writes each model in 16 chunks at once, and on the shared drive that stalls at 0 bytes.
+  # Finished files are then copied to the shared folder. A model already there is skipped.
   command -v ollama >/dev/null || { fail "ollama is not installed"; exit 1; }
-  mkdir -p "$PUB_OLLAMA"
+  STAGE="$HOME/.cache/cctv_lab_ollama_stage"
+  mkdir -p "$PUB_OLLAMA/blobs" "$PUB_OLLAMA/manifests" "$STAGE"
   export OLLAMA_HOST=127.0.0.1:11435
-  OLLAMA_MODELS="$PUB_OLLAMA" OLLAMA_NOPRUNE=1 ollama serve >"$PUBLIC_LAB/fill_ollama.log" 2>&1 &
+  OLLAMA_MODELS="$STAGE" OLLAMA_NOPRUNE=1 ollama serve >"$STAGE.log" 2>&1 &
   SERVER=$!
   trap 'kill $SERVER 2>/dev/null' EXIT
   for _ in $(seq 30); do curl -fs "http://$OLLAMA_HOST/api/tags" >/dev/null && break; sleep 1; done
   for m in "${VLM_MODELS[@]}"; do
+    name="${m%%:*}"; tag="${m#*:}"; [ "$tag" = "$m" ] && tag=latest
+    [ -f "$PUB_OLLAMA/manifests/registry.ollama.ai/library/$name/$tag" ] && { ok "$m already in the shared folder"; continue; }
     say "Model $m"
     ollama pull "$m" && ok "$m"
   done
-  ollama list
+  say "Copying the downloaded models to $PUB_OLLAMA"
+  for b in "$STAGE"/blobs/sha256-*; do
+    case "$b" in *partial*) continue ;; esac
+    t="$PUB_OLLAMA/blobs/$(basename "$b")"
+    [ "$(stat -c %s "$t" 2>/dev/null)" = "$(stat -c %s "$b")" ] || { cp "$b" "$t.part" && mv "$t.part" "$t"; }
+  done
+  [ -d "$STAGE/manifests" ] && cp -r "$STAGE/manifests/." "$PUB_OLLAMA/manifests/"
+  echo "  (the local copy in $STAGE can be deleted)"
+  ls "$PUB_OLLAMA/manifests/registry.ollama.ai/library"/*/*
   chmod -R g+rwX,o+rX "$PUBLIC_LAB" 2>/dev/null || true
   ok "Shared folder ready: $PUBLIC_LAB"
   exit 0
