@@ -150,6 +150,29 @@ torch       2.7.0+cu128 GPU: True
 
 If the download stops, simply run it again: finished photos are skipped.
 
+### More data (optional) ➕
+
+```bash
+./03_download_data.sh --list                      # what can be downloaded
+./03_download_data.sh MVI_39761 40131             # any of the 60 UA-DETRAC videos ("MVI_" optional)
+./03_download_data.sh --detrac-all                # all 60 (~5.6 GB)
+./03_download_data.sh --tum-scenes                # 4 real highway accidents, 35 s each (~1.1 GB)
+./03_download_data.sh --tum r09_s10 north50       # one whole TUM camera (~3,000 photos, ~1 GB)
+./03_download_data.sh --tum-configs               # every TUM camera a config/auto_*.yaml uses (~15 GB)
+```
+
+| Data | Ready to play in Isaac Sim | Source |
+|---|---|---|
+| UA-DETRAC MVI_20011, MVI_40191 | yes (`config/detrac_*.yaml`) | Hugging Face zip, CC BY 4.0 |
+| other UA-DETRAC videos | no config yet: the extension can try to calibrate a picked video | same zip |
+| TUM accident scenes | yes (`config/tum_r09_*.yaml`): the crash happens 20 s into each clip | TUM Traffic Accid3nD, Nextcloud share, **CC BY-NC-SA 4.0 (non-commercial)** |
+| TUM full cameras | yes, for the cameras with a `config/auto_r09_*.yaml` | same share |
+
+TUM is five ~9 GB zips; `tum_download.py` uses the same Range trick and fetches only the photos asked for
+(a camera can be split over two zips, so all five tables of contents are read first, ~30 s).
+Add `--labels` to also get the dataset's 3D labels (only the evaluation tools need them).
+The share answers each request slowly, so 32 photos are fetched in parallel: a scene takes about 1–3 minutes.
+
 ---
 
 ## Step 4 — Health check ✅
@@ -170,7 +193,7 @@ Runs the project's own checker (`tools/check_env.py`). These must be `[ok]`:
 ```
 
 **`[!!]` is OK for these** (not used today):
-`TUMTraf-Accid3nD` (real accident videos, need registration),
+`TUMTraf-Accid3nD` (real accident videos, optional: `./03_download_data.sh --tum-scenes`),
 `data/cache` (made automatically), `Ollama` (we switch it on in Step 7).
 
 > 💡 Good news we discovered here: Isaac Sim's own torch already runs on the GB10 GPU,
