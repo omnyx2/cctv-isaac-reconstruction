@@ -173,6 +173,17 @@ TUM is five ~9 GB zips; `tum_download.py` uses the same Range trick and fetches 
 Add `--labels` to also get the dataset's 3D labels (only the evaluation tools need them).
 The share answers each request slowly, so 32 photos are fetched in parallel: a scene takes about 1–3 minutes.
 
+> 🖥️ **On our DGX Spark: use the shared folder instead (faster).** Every pod sees `/mnt/public`
+> (`~/Public`). The videos and the VLMs were downloaded there once, so copy them instead of downloading:
+> ```bash
+> ./03_spark_public.sh        # videos + YOLO models + the default VLM (then Step 7 skips the 19 GB download)
+> ./03_spark_public.sh all    # ... and every VLM in the list below (~55 GB)
+> ./09_more_scenes.sh         # the TUM accident clips (instead of --tum-scenes, see More hands-on)
+> ```
+> 🧑‍🏫 Filling the shared folder (once, by the teacher): `./03_spark_public.sh fill` → `/mnt/public/cctv_lab`
+> (all of UA-DETRAC, all of TUM Traffic Accid3nD, the 5 VLMs: ~80 GB), then `./09_more_scenes.sh fill`.
+> Other computers keep using `03_download_data.sh` and `07_vlm_setup.sh` as usual.
+
 ---
 
 ## Step 4 — Health check ✅
@@ -296,6 +307,17 @@ export VLM_MODEL=qwen2.5vl:7b
 > but only 3 billion work on each word, so it answers like a small model. "4-bit" = each number is
 > squeezed into 4 bits, so the model fits in 19 GB instead of ~60 GB. The model is set once in
 > `scripts/env.sh` (`VLM_MODEL`); steps 7 and 8 both use it.
+
+Want to compare? `./07_vlm_setup.sh all` downloads 5 models from 5 families (`VLM_MODELS` in `env.sh`),
+then pick one in the VLM console (Step 8, **Connection → model**):
+
+| Model | Family | Download | Notes |
+|---|---|---|---|
+| `qwen3-vl:30b-a3b-instruct` | Qwen (Alibaba) | 19 GB | default, best in our test |
+| `qwen2.5vl:7b` | Qwen (Alibaba) | 6 GB | smaller, fast |
+| `gemma4:e2b` | Gemma (Google) | 7 GB | tiny brain, fastest, misses crashes |
+| `llama3.2-vision:11b` | Llama (Meta) | 8 GB | not in our benchmark |
+| `mistral-small3.2:24b` | Mistral | 15 GB | not in our benchmark |
 
 YOLO can only draw boxes and say "car". A **VLM (vision-language model)** looks at the
 whole picture and **answers in words**: "Heavy traffic, people waiting at the bus stop".
@@ -486,6 +508,59 @@ pkill -f "ollama serve"                # stop the Ollama server started by step 
 ollama rm qwen3-vl:30b-a3b-instruct    # delete the 19 GB model
 ollama rm qwen2.5vl:7b                 # and the 6 GB one, if you pulled it
 ```
+
+---
+
+## 🧪 More hands-on — real accidents and more cameras (appendix)
+
+Finished early? Our two Beijing videos have **no accidents**. The **TUM Traffic Accid3nD** dataset
+(Technical University of Munich) filmed a German motorway with fixed cameras and caught **real crashes**.
+On our DGX Spark it is already in the shared folder; copy it to your computer:
+
+```bash
+./09_more_scenes.sh          # the accident clips (up to 35 s: 20 s before the crash, 15 s after)
+./09_more_scenes.sh all      # ... and the full camera recordings (much bigger)
+./09_more_scenes.sh list     # what can I play now?
+```
+Not on the DGX Spark (no shared folder)? Download the same clips from the internet instead:
+`./03_download_data.sh --tum-scenes` (~1.1 GB, see **More data** in Step 3), then `./09_more_scenes.sh list`.
+
+Then open one, exactly like Step 6 (or pick it in the **Scenario** list of the CCTV window):
+
+```bash
+./06_run_extension.sh tum_r09_s01_south50     # a car squeezes past a stopped van and hits it
+```
+
+| Name | What it is |
+|---|---|
+| `detrac_MVI_20011`, `detrac_MVI_40191` | our two Beijing videos (Step 3) |
+| `tum_r09_s01_south16`, `tum_r09_s01_south50` | the **same crash** seen by two lenses (16 mm wide, 50 mm zoomed) |
+| `tum_r09_s02_north50` | a van's trailer starts swaying, the van crosses to the shoulder and **overturns** |
+| `tum_r09_s03_north50` | slow traffic: a dark car hits the side of a white taxi |
+| `auto_r09_...` (with `all`) | whole recordings; the camera was measured **automatically** from the lane paint |
+
+Each accident clip comes with `scene.yaml` (what happened, the moment of contact) in
+`data/datasets/TUMTraf-Accid3nD/accident_scenes/<name>/`. Read it **after** the missions!
+
+### 🧪 Missions
+1. **Crash detective.** Play a `tum_` clip. When do *you* see the crash? Write down the time
+   (CCTV Timeline). Then check `scene.yaml`: were you right?
+2. **Does the 3D world crash too?** Watch the 3D cars at the moment of contact. YOLO + physics only see
+   boxes: do the 3D cars touch, jump, or pass through each other? Why?
+3. **Ask the VLM.** Prompt preset `accident_yesno`. Pause before the crash and again a few seconds
+   after it: does the answer change? Then **Timeline → VLM scan of the whole video**: is the marker near the crash?
+4. **Two lenses, one crash.** `south16` vs `south50`: which one counts more cars? Which one is easier
+   for the VLM? (Zoom = bigger cars but a smaller piece of road.)
+5. **VLM tournament.** `./07_vlm_setup.sh all`, then in the console switch models on the **same paused
+   frame**. Which model sees the crash? Which one is fastest? Compare with **🏁 Which VLM?** above.
+
+> ⚠️ TUM Traffic Accid3nD is licensed **CC BY-NC-SA 4.0**: fine for class, not for selling;
+> credit *TU Munich, accident-dataset.github.io*. The photos are big (1920×1200) and YOLO uses the larger
+> model here, so the replay is slower than the Beijing videos.
+
+> 🧑‍🏫 **Teacher, once:** `./03_spark_public.sh fill` (all datasets + 5 VLMs → `/mnt/public/cctv_lab`),
+> then `./09_more_scenes.sh fill` (cuts the accident clips out of the full recordings, in the shared folder).
+> Students only copy, so the class never downloads from the internet at the same time.
 
 ---
 
