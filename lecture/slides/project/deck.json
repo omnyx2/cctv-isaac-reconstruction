@@ -1,0 +1,19 @@
+{
+  "v": 4,
+  "createdOnFiles": {"v": 1, "at": "2026-10-11T02:45:00+09:00"},
+  "lists": "css",
+  "title": "CCTV to 3D World Lab",
+  "order": ["cover", "mission", "setup", "steps", "run", "how", "extension", "vlm", "bench", "toobig", "playground", "missions", "wrong", "help"],
+  "sections": {
+    "s1": {"description": "What we build today and what we need", "start": "cover"},
+    "s2": {"description": "Steps 0-6: from a CCTV video to cars driving in Isaac Sim", "start": "steps"},
+    "s3": {"description": "Steps 7-8: a VLM that describes the scene in words, and which one fits the DGX Spark", "start": "vlm"},
+    "s4": {"description": "Missions, lessons and troubleshooting", "start": "missions"}
+  },
+  "faces": {
+    "fredoka": {"family": "Fredoka", "href": "https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito+Sans:wght@400;700&family=JetBrains+Mono:wght@500&display=swap"},
+    "nunito-sans": {"family": "Nunito Sans", "href": "https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito+Sans:wght@400;700&family=JetBrains+Mono:wght@500&display=swap"},
+    "jetbrains-mono": {"family": "JetBrains Mono", "href": "https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito+Sans:wght@400;700&family=JetBrains+Mono:wght@500&display=swap"}
+  },
+  "designSystems": []
+}

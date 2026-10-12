@@ -1,0 +1,21 @@
+<section id="toobig" data-transition="fade" style="background:#F28C28;color:#14213D;font-family:'Nunito Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;justify-content:space-between;gap:40px">
+<div style="display:flex;flex-direction:column;gap:24px">
+<p style="font-size:28px;font-weight:700;letter-spacing:2px;text-transform:uppercase">A lesson we learned the hard way</p>
+<h2 style="font-family:'Fredoka', Arial, sans-serif;font-size:96px;font-weight:600;line-height:1.05">Too big a model, and the whole desktop shuts down</h2>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:32px">
+<div style="display:flex;flex-direction:column;gap:12px;background:#FFF4E6;padding:40px;border-radius:24px">
+<h3 style="font-family:'Fredoka', Arial, sans-serif;font-size:72px;font-weight:600">~117 GB</h3>
+<p style="font-size:28px">The real memory limit. CPU, GPU, Isaac Sim and the VLM all share it.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#FFF4E6;padding:40px;border-radius:24px">
+<h3 style="font-family:'Fredoka', Arial, sans-serif;font-size:72px;font-weight:600">2 crashes</h3>
+<p style="font-size:28px">qwen3-vl 32B and qwen2.5vl 72B ran out of memory. We do not run 72B or bigger here.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#FFF4E6;padding:40px;border-radius:24px">
+<h3 style="font-family:'Fredoka', Arial, sans-serif;font-size:72px;font-weight:600">45 → 19 GB</h3>
+<p style="font-size:28px">The same q4 model, once we told it to remember 8,192 tokens instead of 262,144.</p>
+</div>
+</div>
+<aside>DGX Spark shares one memory between CPU and GPU, and the container's real limit is about 117 GB, shared with other programs. Twice during testing a model used it up and the whole container was killed: desktop, terminals, everything. So llama3.2-vision 90B and llama4 scout were never tried. Hidden memory hog: Ollama reserves room for the model's full context. qwen3-vl allows 262,144 tokens, which took 45 GB. One picture plus a question plus an answer fits in 8,192 tokens, and then the model takes 19 GB. Rule of thumb: the model plus Isaac Sim must leave plenty of memory free.</aside>
+</section>

@@ -1,0 +1,47 @@
+== qwen3-vl:30b-a3b-instruct
+   load 10.4s  
+   scene_json s20011_0001         6.7s  {"summary": "A high-angle view of a multi-lane urban road with moderat
+   scene_json s20011_0200         2.1s  {"summary": "A multi-lane road with moderate traffic, a bus stop with 
+   scene_json s20011_0400         2.2s  {"summary": "A multi-lane road with moderate traffic, a bus stop on th
+   scene_json s20011_0600         2.2s  {"summary": "A multi-lane road with moderate traffic, a bus, and a tax
+   scene_json s40191_0001         2.1s  {"summary": "A multi-lane highway with traffic flowing in both directi
+   scene_json s40191_0800         2.1s  {"summary": "A multi-lane highway with moderate traffic flowing in bot
+   scene_json s40191_1600         2.1s  {"summary": "A multi-lane highway with moderate traffic flowing in bot
+   scene_json s40191_2400         2.1s  {"summary": "A high-angle view of a multi-lane highway with moderate t
+   scene_json acc1                2.5s  {"summary": "A car has crashed into a hedge on the side of a road, wit
+   scene_json acc2                2.8s  {"summary": "A car has crashed into a ditch on the shoulder of a road,
+   scene_json acc3                2.5s  {"summary": "A car has overturned on its side in the middle of the roa
+   scene_json acc4                2.7s  {"summary": "A red truck cab has crashed into a snowbank, with its tra
+   scene_json acc5                2.8s  {"summary": "A traffic accident scene at a busy intersection with an o
+   accident   s20011_0001         0.1s  no
+   accident   s20011_0200         0.1s  no
+   accident   s20011_0400         0.1s  no
+   accident   s20011_0600         0.1s  no
+   accident   s40191_0001         0.1s  no
+   accident   s40191_0800         0.1s  no
+   accident   s40191_1600         0.1s  no
+   accident   s40191_2400         0.1s  no
+   accident   acc1                0.1s  yes
+   accident   acc2                0.1s  yes
+   accident   acc3                0.1s   yes
+   accident   acc4                0.1s   yes
+   accident   acc5                0.1s  yes
+   count      s20011_0001_near    1.0s  3
+   count      s20011_0200_near    1.0s  2
+   count      s20011_0400_near    1.0s  3
+   count      s20011_0600_near    1.0s  1
+   count      s40191_0001_near    1.0s  5
+   count      s40191_0800_near    1.0s  3
+   count      s40191_1600_near    1.0s  6
+   count      s40191_2400_near    1.0s  5
+   attributes s20011_0001         0.4s  {"bus": false, "truck": false, "people_waiting": true, "two_way": true
+   attributes s20011_0200         0.4s  {"bus": false, "truck": true, "people_waiting": true, "two_way": true}
+   attributes s20011_0400         0.4s  {"bus": false, "truck": false, "people_waiting": true, "two_way": true
+   attributes s20011_0600         0.4s  {"bus": true, "truck": true, "people_waiting": true, "two_way": true}
+   attributes s40191_0001         0.4s  {"bus": false, "truck": true, "people_waiting": false, "two_way": true
+   attributes s40191_0800         0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   attributes s40191_1600         0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": fal
+   attributes s40191_2400         0.4s  {"bus": false, "truck": false, "people_waiting": false, "two_way": tru
+   korean     s20011_0001         0.8s  이미지는 도시의 다중 차선 도로를 위에서 내려다본 전경을 보여주고 있다. 좌측에는 버스 정류장에서 승객들이 대기하고 있으며, 
+   korean     acc5                0.9s  이 장면은 도로 교차로에서 발생한 교통사고 현장을 보여주고 있다. 검은색 승용차가 뒤집힌 채 도로 위에 정지해 있고, 주변에는
+   -> /home/user/AI_CCTV_PROJ/lecture/vlm_bench/results/qwen3-vl_30b-a3b-instruct.jsonl

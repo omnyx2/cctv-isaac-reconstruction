@@ -1,0 +1,28 @@
+<section id="how" data-transition="fade" style="background:#F7F5EF;color:#14213D;font-family:'Nunito Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:16px">
+<p style="font-size:28px;color:#B85C00;font-weight:700;letter-spacing:2px;text-transform:uppercase">How does it work?</p>
+<h2 style="font-family:'Fredoka', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1">Eyes, brain, hands</h2>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:32px">
+<div style="display:flex;flex-direction:column;gap:16px;background:#FFFFFF;padding:40px;border:2px solid #D9DEE7;border-radius:24px">
+<h3 style="font-family:'Fredoka', Arial, sans-serif;font-size:44px;font-weight:600;color:#2F6FBF">👀 Eyes</h3>
+<p style="font-size:28px;color:#4A5568"><b style="color:#14213D">YOLO</b> draws boxes around cars and people.</p>
+<p style="font-size:28px;color:#4A5568"><b style="color:#14213D">ByteTrack</b> keeps car #1 as car #1 in every frame.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px;background:#FFFFFF;padding:40px;border:2px solid #D9DEE7;border-radius:24px">
+<h3 style="font-family:'Fredoka', Arial, sans-serif;font-size:44px;font-weight:600;color:#2F6FBF">🧠 Brain</h3>
+<p style="font-size:28px;color:#4A5568">A lane is <b style="color:#14213D">3.5 m</b> wide: four points on the lane lines turn pixels into meters.</p>
+<p style="font-size:28px;color:#4A5568">A <b style="color:#14213D">Kalman filter</b> removes the jitter.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px;background:#FFFFFF;padding:40px;border:2px solid #D9DEE7;border-radius:24px">
+<h3 style="font-family:'Fredoka', Arial, sans-serif;font-size:44px;font-weight:600;color:#2F6FBF">🎮 Hands</h3>
+<p style="font-size:28px;color:#4A5568">A <b style="color:#14213D">bicycle model</b> lets cars move only like real cars.</p>
+<p style="font-size:28px;color:#4A5568">Isaac Sim places them in the 3D world.</p>
+</div>
+</div>
+<div style="display:flex;gap:24px;align-items:center;background:#E6EAF2;padding:32px;border-radius:24px">
+<x-icon name="Chat" style="color:#2F6FBF;width:56px;height:56px"></x-icon>
+<p style="font-size:28px;color:#14213D"><b>Why not just teleport the car to the AI's guess?</b> The AI is a little wrong sometimes. Teleporting would make cars slide sideways or spin on the spot.</p>
+</div>
+<aside>Folders: perception (eyes), world (brain), simulation (hands), config (settings per video), main.py starts everything. Look for calibration_points in config/detrac_MVI_20011.yaml to see the pixel-to-meter points.</aside>
+</section>

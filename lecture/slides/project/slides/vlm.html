@@ -1,0 +1,18 @@
+<section id="vlm" data-transition="fade" style="background:#14213D;color:#F7F5EF;font-family:'Nunito Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:16px">
+<p style="font-size:28px;color:#F2A65A;font-weight:700;letter-spacing:2px;text-transform:uppercase">Step 7 · wake up the VLM</p>
+<h2 style="font-family:'Fredoka', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1">A VLM answers in words</h2>
+</div>
+<div style="display:flex;gap:48px;align-items:center">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:28px;color:#F2A65A;background:#22335A;padding:16px 24px;border-radius:12px">./07_vlm_setup.sh</p>
+<p style="font-size:28px;color:#C9D3E6">Model: <b style="color:#F7F5EF">qwen3-vl:30b-a3b-instruct</b>, 4-bit (q4) · 19 GB in memory</p>
+</div>
+<table style="font-size:28px;color:#F7F5EF">
+<tr><th style="width:12%">Video</th><th style="width:14%">Answer in</th><th style="width:74%">The VLM said</th></tr>
+<tr><td>0 s</td><td>7.3 s</td><td>“A high-angle view of a multi-lane road with moderate traffic, a bus stop with people waiting, and a pedestrian crossing.”</td></tr>
+<tr><td>10 s</td><td>2.2 s</td><td>“A busy multi-lane road with traffic moving in both directions, a bus stop with people waiting on the left…”</td></tr>
+<tr><td>20 s</td><td>2.1 s</td><td>“A multi-lane road with moderate traffic, a bus stop with waiting passengers, and a pedestrian crossing in the foreground.”</td></tr>
+</table>
+<p style="font-size:28px;color:#C9D3E6"><b style="color:#F2A65A">Quiz:</b> why was the first answer 3× slower? The 19 GB model had to load first.</p>
+<aside>A VLM is a vision-language model: it looks at the whole picture and answers in words. The script starts the Ollama server (runs AI models on our own computer, no internet needed after download), downloads the model once, and asks about 3 frames of MVI_20011. Answers go to data/results/vlm/lecture_test.jsonl. Measured on 2026-10-11. 30B-A3B means 30 billion numbers in total but only 3 billion work on each word, so it answers like a small model. 4-bit means each number is squeezed into 4 bits.</aside>
+</section>

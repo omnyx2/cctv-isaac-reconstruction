@@ -1,0 +1,16 @@
+<section id="missions" data-transition="fade" style="background:#14213D;color:#F7F5EF;font-family:'Nunito Sans', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:40px">
+<div style="display:flex;flex-direction:column;gap:16px">
+<p style="font-size:28px;color:#F2A65A;font-weight:700;letter-spacing:2px;text-transform:uppercase">Your turn</p>
+<h2 style="font-family:'Fredoka', Arial, sans-serif;font-size:72px;font-weight:600;line-height:1.1">Seven missions with the VLM</h2>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+<p style="font-size:28px;color:#C9D3E6"><b style="color:#F2A65A">1 · Read its mind.</b> Does it notice the people at the bus stop?</p>
+<p style="font-size:28px;color:#C9D3E6"><b style="color:#F2A65A">2 · YOLO vs VLM.</b> Ask “How many cars?” Who is closer to the real count?</p>
+<p style="font-size:28px;color:#C9D3E6"><b style="color:#F2A65A">3 · Change the question.</b> describe, accident_yesno, scene_json: which suits a program?</p>
+<p style="font-size:28px;color:#C9D3E6"><b style="color:#F2A65A">4 · Speak Korean!</b> “이 CCTV 장면을 한국어로 두 문장으로 설명해줘.”</p>
+<p style="font-size:28px;color:#C9D3E6"><b style="color:#F2A65A">5 · Speed vs detail.</b> Image size 448 px, then 1344 px. Compare the time.</p>
+<p style="font-size:28px;color:#C9D3E6"><b style="color:#F2A65A">6 · Your own picture.</b> Analyze image file… with any road photo.</p>
+<p style="font-size:28px;color:#C9D3E6"><b style="color:#F2A65A">7 · Accident hunter.</b> VLM scan of the whole video. This dataset has no accidents: does it find none?</p>
+</div>
+<aside>Mission 2: turn JSON answer off for free-text prompts, then Apply prompt. The video's top-left says Vehicles: 25 or so. In our test every VLM struggled with counting. Mission 4: the q4 model answered all Korean questions in Korean in our test. Mission 7 is in the Timeline window and adds markers where the VLM thinks there was an accident.</aside>
+</section>

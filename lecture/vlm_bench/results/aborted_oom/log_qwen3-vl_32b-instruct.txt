@@ -1,0 +1,14 @@
+== qwen3-vl:32b-instruct
+   load 6.3s  
+   scene_json s20011_0001        12.9s  {   "summary": "A multi-lane urban road with moderate traffic flow, ve
+   scene_json s20011_0200        13.1s  {   "summary": "A multi-lane urban road with moderate traffic flow, in
+   scene_json s20011_0400        12.7s  {   "summary": "A multi-lane urban road with moderate traffic flow, in
+   scene_json s20011_0600        13.0s  {   "summary": "A multi-lane road with moderate traffic flow, includin
+   scene_json s40191_0001        12.4s  {   "summary": "Multiple vehicles are traveling in both directions on 
+   scene_json s40191_0800        12.6s  {   "summary": "A multi-lane highway with moderate traffic flow in bot
+   scene_json s40191_1600        12.2s  {   "summary": "Multiple vehicles are traveling in both directions on 
+   scene_json s40191_2400        12.9s  {   "summary": "Multiple lanes of traffic are flowing in both directio
+   scene_json c20012             12.8s  {   "summary": "A busy urban road with multiple lanes of traffic, incl
+   scene_json c20032             13.1s  {   "summary": "A wide multi-lane road with moderate traffic flow, inc
+   scene_json c20034             14.9s  {   "summary": "A multi-lane road with moderate traffic flow, includin
+   scene_json c20051             16.1s  {   "summary": "A multi-lane road with moderate traffic flow, includin
