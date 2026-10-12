@@ -2,11 +2,14 @@
 # Step 7: get the VLM (vision-language model) ready. It looks at a picture and answers in words.
 #   ./07_vlm_setup.sh                 -> qwen3-vl:30b-a3b-instruct (4-bit, ~19 GB download, ~20 GB memory)
 #   ./07_vlm_setup.sh qwen2.5vl:7b    -> smaller and lighter (~6 GB)
+#   ./07_vlm_setup.sh all             -> every model in VLM_MODELS (env.sh, ~55 GB), tests the default one
 # Uses the Ollama already installed for this user (no system install); starts its server if it is off.
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 need_isaac; need_project
 MODEL="${1:-$VLM_MODEL}"
+PULL=("$MODEL")
+if [ "$MODEL" = all ]; then MODEL="$VLM_MODEL"; PULL=("${VLM_MODELS[@]}"); fi
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 LOG="$WORK/lecture/ollama.log"
 
@@ -23,9 +26,11 @@ else
   ok "server started (log: $LOG)"
 fi
 
-say "Model $MODEL"
-if ollama list | awk 'NR>1{print $1}' | grep -qx "$MODEL"; then ok "already downloaded"
-else ollama pull "$MODEL" && ok "downloaded"; fi
+for m in "${PULL[@]}"; do
+  say "Model $m"
+  if ollama list | awk 'NR>1{print $1}' | grep -qx "$m"; then ok "already downloaded"
+  else ollama pull "$m" && ok "downloaded"; fi
+done
 ollama list
 
 say "Test: ask the VLM about 3 frames of MVI_20011 (first answer is slow: the model loads)"

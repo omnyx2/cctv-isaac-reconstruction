@@ -2,3 +2,4 @@
 ollama.log
 __pycache__/
 .~lock.*
+spark_fill.log

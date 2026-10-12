@@ -24,6 +24,11 @@ export CCTV_DATASETS="${CCTV_DATASETS:-$PROJECT/data/datasets}"
 # on this DGX Spark (lecture/vlm_bench/results/REPORT.md). Smaller: VLM_MODEL=qwen2.5vl:7b (~6 GB).
 # Do not use 72B or bigger models here: they ran out of memory and killed the whole desktop.
 VLM_MODEL="${VLM_MODEL:-qwen3-vl:30b-a3b-instruct}"
+# More models to compare in the VLM console (./07_vlm_setup.sh all), one per family, all safe here:
+# Qwen (default, ~19 GB), Qwen small (~6 GB), Google Gemma (~7 GB), Meta Llama (~8 GB), Mistral (~15 GB).
+VLM_MODELS=(qwen3-vl:30b-a3b-instruct qwen2.5vl:7b gemma4:e2b llama3.2-vision:11b mistral-small3.2:24b)
+# DGX Spark only: shared folder (all pods see it) with the videos and VLM models, see 03_spark_public.sh.
+PUBLIC_LAB="${PUBLIC_LAB:-/mnt/public/cctv_lab}"
 
 # DGX Spark (aarch64): Isaac Sim needs libgomp preloaded.
 if [ "$(uname -m)" = "aarch64" ] && [ -f /lib/aarch64-linux-gnu/libgomp.so.1 ]; then
