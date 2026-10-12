@@ -181,7 +181,7 @@ The share answers each request slowly, so 32 photos are fetched in parallel: a s
 > ./09_more_scenes.sh         # the TUM accident clips (instead of --tum-scenes, see More hands-on)
 > ```
 > 🧑‍🏫 Filling the shared folder (once, by the teacher): `./03_spark_public.sh fill` → `/mnt/public/cctv_lab`
-> (all of UA-DETRAC, all of TUM Traffic Accid3nD, the 5 VLMs: ~80 GB), then `./09_more_scenes.sh fill`.
+> (all of UA-DETRAC, the 5 TUM Traffic Accid3nD zips, the 5 VLMs: ~80 GB), then `./09_more_scenes.sh fill`.
 > Other computers keep using `03_download_data.sh` and `07_vlm_setup.sh` as usual.
 
 ---
@@ -518,8 +518,8 @@ Finished early? Our two Beijing videos have **no accidents**. The **TUM Traffic 
 On our DGX Spark it is already in the shared folder; copy it to your computer:
 
 ```bash
-./09_more_scenes.sh          # the accident clips (up to 35 s: 20 s before the crash, 15 s after)
-./09_more_scenes.sh all      # ... and the full camera recordings (much bigger)
+./09_more_scenes.sh          # the accident clips (up to 35 s: 20 s before the crash, 15 s after; 1.1 GB, ~1 min)
+./09_more_scenes.sh all      # ... and 13 full camera recordings (2 min each; 8 GB, ~4 min)
 ./09_more_scenes.sh list     # what can I play now?
 ```
 Not on the DGX Spark (no shared folder)? Download the same clips from the internet instead:
@@ -530,6 +530,11 @@ Then open one, exactly like Step 6 (or pick it in the **Scenario** list of the C
 ```bash
 ./06_run_extension.sh tum_r09_s01_south50     # a car squeezes past a stopped van and hits it
 ```
+
+![TUM accident scene in Isaac Sim at the moment of contact](result_tum_accident.png)
+
+> ⚠️ Spoiler: the **CCTV Timeline** lists a `contact (annot.)` marker with the exact crash time.
+> For Mission 1, don't look at the Markers list until you have your own answer!
 
 | Name | What it is |
 |---|---|
@@ -558,8 +563,13 @@ Each accident clip comes with `scene.yaml` (what happened, the moment of contact
 > credit *TU Munich, accident-dataset.github.io*. The photos are big (1920×1200) and YOLO uses the larger
 > model here, so the replay is slower than the Beijing videos.
 
+> 🧑‍🏫 Measured here (2026-10-13): `tum_r09_s01_south50` 872 frames at **25 FPS**, 31 lane-paint pieces found,
+> exit 0; the full recording `auto_r09_s10_s040_camera_basler_north_50mm` 3,000 frames, exit 0.
+
 > 🧑‍🏫 **Teacher, once:** `./03_spark_public.sh fill` (all datasets + 5 VLMs → `/mnt/public/cctv_lab`),
-> then `./09_more_scenes.sh fill` (cuts the accident clips out of the full recordings, in the shared folder).
+> then `./09_more_scenes.sh fill` (cuts the 4 accident clips out of the zips, ~3 min).
+> TUM stays as 5 zips in the shared folder: it writes small files slowly (~30 photos/s; unpacking all 223,000
+> would take 2 hours), so `09_more_scenes.sh` unpacks only the cameras asked for on each computer's own disk (~400 photos/s).
 > Students only copy, so the class never downloads from the internet at the same time.
 
 ---
