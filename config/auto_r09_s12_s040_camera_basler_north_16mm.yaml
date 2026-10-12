@@ -1,0 +1,40 @@
+# Scene dynamic logic calibration (calibrated, 5 agreeing estimates)
+# focal 2185 px, height 8.31 m, pitch 16.18 deg; 0 lane markings
+# video D:\datasets\TUMTraf-Accid3nD\data\r09_s12\images\s040_camera_basler_north_16mm
+
+video: {path: '${DATASETS}/TUMTraf-Accid3nD/data/r09_s12/images/s040_camera_basler_north_16mm',
+  fps: 25.0}
+yolo:
+  model_path: yolo11s.pt
+  confidence: 0.25
+  classes: [0, 2, 5, 7]
+  tracker_config: bytetrack.yaml
+  imgsz: 1280
+simulation:
+  vehicle_dynamics: true
+  ground_size: 400.0
+  camera:
+    position: [0.0, 0.0, 8.308]
+    pitch_deg: 16.181
+    yaw_deg: -12.886
+    focal_px: 2185.0
+    image_size: [1920, 1200]
+  lane_lines_x: [-4.013, -3.859, 3.603, 3.778, 7.326, 7.465, 20.546, 24.234]
+  lane_markings: []
+mapping:
+  source: auto:scene_logic
+  calibration_points:
+  - - [576.0, 1104.0]
+    - [0.474, 15.16]
+  - - [1344.0, 1104.0]
+    - [6.165, 13.858]
+  - - [672.0, 780.0]
+    - [1.871, 21.902]
+  - - [1248.0, 780.0]
+    - [7.838, 20.537]
+context:
+  allowed_standards: [CN_expressway]
+stabilization: {enabled: false}
+display: {show_real: true, show_sim: true, window_width: 960, window_height: 540}
+vlm: {enabled: false, backend: ollama, url: 'http://localhost:11434', model: 'qwen2.5vl:7b',
+  interval_s: 4.0, max_side: 1344, timeout_s: 60.0}
