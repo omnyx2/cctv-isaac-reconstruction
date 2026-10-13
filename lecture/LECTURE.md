@@ -48,6 +48,8 @@ cd ~/AI_CCTV_PROJ/lecture/scripts
 
 > 🧑‍🏫 **Teacher tip:** run `./setup_all.sh` once before class (steps 0–4, ~6 min).
 > In class you can then jump straight to **Step 5**.
+> On our DGX Spark it also takes everything from the shared folder: all 80 videos, the TUM accident clips
+> (`09_more_scenes.sh`) and the default VLM (19 GB, the slow part: ~20 min). Step 7 then only tests the VLM.
 
 ---
 
@@ -175,7 +177,8 @@ The share answers each request slowly, so 32 photos are fetched in parallel: a s
 
 > 🖥️ **On our DGX Spark: same commands, from the shared folder.** Every pod sees `/mnt/public`
 > (`~/Public`). The videos and the VLMs were downloaded there once, so `./03_download_data.sh` and
-> `./07_vlm_setup.sh` find them there and copy instead of downloading (seconds, not minutes):
+> `./07_vlm_setup.sh` find them there and copy instead of downloading (videos: seconds; a VLM: ~1 min per GB,
+> the shared drive reads ~15 MB/s). `./setup_all.sh` does all of this for you:
 > ```bash
 > ./03_download_data.sh                          # the lab's two videos
 > ./03_download_data.sh MVI_39761 40131 39031    # any of the 80 shared videos (60 train + 20 test)
