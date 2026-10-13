@@ -33,6 +33,18 @@ def fps_from_names(images) -> Optional[float]:
     return float(round(1.0 / np.median(dt), 2)) if len(dt) else None
 
 
+# Capture rate of datasets whose frame names carry no time: a folder inside one of these
+# (any parent named so) plays at this rate when no fps is given.
+DATASET_FPS = {"UA-DETRAC": 25.0}
+
+
+def fps_from_dataset(folder: Path) -> Optional[float]:
+    for part in Path(folder).resolve().parts:
+        if part in DATASET_FPS:
+            return DATASET_FPS[part]
+    return None
+
+
 class VideoPlayer:
     """
     Plays a video file, or the image frames of a directory in name order.
@@ -86,7 +98,7 @@ class VideoPlayer:
             print(f"No image frames in {self.video_path}")
             return False
         if not self._fps_override:
-            fps = fps_from_names(images)
+            fps = fps_from_names(images) or fps_from_dataset(self.video_path)
             if fps is None:
                 print(f"An image directory needs the capture fps: {self.video_path}")
                 return False

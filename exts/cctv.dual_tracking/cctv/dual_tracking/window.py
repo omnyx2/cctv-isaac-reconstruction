@@ -9,7 +9,7 @@ import numpy as np
 import omni.ui as ui
 
 from .calibration import STANDARDS, AutoCalibration
-from .session import ReplaySession, config_for_video, runnable_configs
+from .session import ReplaySession, config_for_video, configs_by_video, downloaded_videos, runnable_configs
 
 VIDEO_EXTENSIONS = ("*.mp4", "*.avi", "*.mkv", "*.mov")
 PREVIEW_WIDTH = 720           # pixels the real view is resized to (the widget fits it to the pane)
@@ -50,6 +50,8 @@ class ControlWindow:
         self._on_start_video, self._on_video_picked = on_start_video, on_video_picked
         self.configs: List[Path] = runnable_configs(project_root)
         self.video_override: Optional[str] = None
+        self.videos: List[Path] = []
+        self._filling_videos = False
         self._calib_lines: List[str] = []
         self._lanes_lines: List[str] = []
         self._picker = None
@@ -67,6 +69,14 @@ class ControlWindow:
                                 ui.Label("Scenario (calibrated config)", height=18)
                                 self._combo = ui.ComboBox(0, *[c.stem for c in self.configs])
                                 self._combo.model.add_item_changed_fn(lambda *_: self._on_config_changed())
+                                with ui.HStack(height=24, spacing=4):
+                                    ui.Label("Downloaded", width=80,
+                                             tooltip="Every video under data/ and the datasets folder "
+                                                     "(* = has a calibrated scenario)")
+                                    self._videos_combo = ui.ComboBox(0, "")
+                                    self._videos_combo.model.add_item_changed_fn(lambda *_: self._on_video_chosen())
+                                    ui.Button("Refresh", width=60, clicked_fn=self.reload_videos,
+                                              tooltip="Look for downloaded videos again")
                                 with ui.HStack(height=24, spacing=4):
                                     ui.Label("Video", width=50)
                                     self._video_field = ui.StringField(read_only=True, width=ui.Fraction(1))
@@ -113,6 +123,7 @@ class ControlWindow:
                                              alignment=ui.Alignment.LEFT_TOP)
                         self._vlm = ui.Label("VLM: off (VLM Console)", height=36, word_wrap=True)
                     ui.Spacer(width=14)        # room for the vertical scrollbar
+        self.reload_videos()
         self._on_config_changed()
         self._on_select = on_select
 
@@ -135,6 +146,44 @@ class ControlWindow:
             model.append_child_item(None, ui.SimpleStringModel(c.stem))
         if current is not None:
             self.select_config(current)
+
+    def _video_label(self, path: Path, configured: dict) -> str:
+        from cctv_utils.paths import datasets_root
+
+        for root in (datasets_root(), self.project_root / "data"):
+            try:
+                name = path.relative_to(root).as_posix()
+                break
+            except ValueError:
+                continue
+        else:
+            name = path.as_posix()
+        return ("* " if path.resolve() in configured else "   ") + name
+
+    def reload_videos(self):
+        """Fill the 'Downloaded' list: every video file / frame folder found on this machine."""
+        self.videos = downloaded_videos(self.project_root)
+        configured = configs_by_video(self.project_root)
+        model = self._videos_combo.model
+        self._filling_videos = True
+        try:
+            for item in list(model.get_item_children()):
+                model.remove_item(item)
+            model.append_child_item(None, ui.SimpleStringModel(
+                f"({len(self.videos)} videos found: pick one, or Browse)" if self.videos
+                else "(no videos found under data/ or the datasets folder: Browse)"))
+            for v in self.videos:
+                model.append_child_item(None, ui.SimpleStringModel(self._video_label(v, configured)))
+            model.get_item_value_model().set_value(0)
+        finally:
+            self._filling_videos = False
+
+    def _on_video_chosen(self):
+        if self._filling_videos:
+            return
+        i = self._videos_combo.model.get_item_value_model().as_int
+        if 1 <= i <= len(self.videos):
+            self._set_video(str(self.videos[i - 1]))
 
     @property
     def auto_calibrate(self) -> bool:
@@ -206,6 +255,9 @@ class ControlWindow:
 
     def _clear_video(self):
         self.video_override = None
+        self._filling_videos = True
+        self._videos_combo.model.get_item_value_model().set_value(0)
+        self._filling_videos = False
         self._update_note()
 
     def _update_note(self):
