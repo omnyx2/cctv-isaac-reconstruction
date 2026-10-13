@@ -3,9 +3,9 @@
 #   PROJECT_COMMIT=<commit> ./01_get_code.sh   -> another version (untested with this lab)
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
-# The lab was tested on this commit (master with PR #1, the lab fixes:
-# Linux extension start, VLM model setting, VLM memory). Newer commits may change things the lab relies on.
-COMMIT="${PROJECT_COMMIT:-9a4c346}"
+# The lab was tested on this commit (the lab fixes: Linux extension start, VLM model setting and memory,
+# the Downloaded video list). Newer commits may change things the lab relies on.
+COMMIT="${PROJECT_COMMIT:-9d44a2b}"
 
 say "Get the code -> $PROJECT"
 if [ -d "$PROJECT/.git" ]; then

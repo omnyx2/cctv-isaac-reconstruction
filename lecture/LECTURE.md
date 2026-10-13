@@ -78,8 +78,8 @@ Only *looks*, installs nothing. You should see:
 ```
 
 Copies the project from GitHub (`git clone https://github.com/omnyx2/cctv-isaac-reconstruction.git`),
-then picks the **version this lab was tested with** (commit `9a4c346`; it already has the fixes for Step 6
-and the VLM settings of Steps 7–8). Running it again changes nothing if that version is already there.
+then picks the **version this lab was tested with** (commit `9d44a2b`; it already has the fixes for Step 6,
+the VLM settings of Steps 7–8 and the Downloaded video list). Running it again changes nothing if that version is already there.
 
 > 🧑‍🏫 Newer code on GitHub was **not** tested with this lab. To try it anyway: `PROJECT_COMMIT=<commit> ./01_get_code.sh`.
 
@@ -266,6 +266,10 @@ lives inside Isaac Sim.
    Wait until **CCTV Dual Tracking** says `ready: detrac_MVI_20011 (first frame and scene shown; Start to replay)`.
 2. In **CCTV Dual Tracking** press **Start**. The **Scenario** list shows only the videos we downloaded
    (`detrac_MVI_20011`, `detrac_MVI_40191`); pick one there to switch.
+   The **Downloaded** list below it shows *every* video on this computer (all of `data/` and the datasets
+   folder; `*` = it has a ready calibration). Pick one without `*` and press Start: it is calibrated from its
+   first seconds, then replays. When the paint on the road does not fit any road standard, it still replays
+   with an **APPROXIMATE** camera (assumed lens and height: the cars move, but metres and km/h are not real).
 3. In **CCTV Timeline** try `-5s`, `+5s`, `Step` and `Speed` (slow motion!).
 
 ![Extension mode](result_extension.png)
@@ -641,3 +645,8 @@ Each accident clip comes with `scene.yaml` (what happened, the moment of contact
     world-model counters as before; Step 8 (MVI_20011, VLM on) 6 answers at 2.3–4.3 s, 0 errors. One of two
     VLM runs logged a PhysX "Failed to create simulation view" at startup and restarted the replay once; the
     rerun was clean. `01_get_code.sh` pins `9a4c346`.
+24. `01_get_code.sh` pins `9d44a2b` (2026-10-13): the extension's **Downloaded** list (every video under `data/`
+    and the datasets folder), UA-DETRAC frame folders without a config open at 25 fps, an uncalibratable video
+    replays with an APPROXIMATE camera (`scene_calibration.py --approximate`), and switching the VLM model or
+    closing Isaac Sim unloads the previous one. Tested here: 95 videos listed in 0.6 s; MVI_39031 (no config,
+    dash ratios fit no standard) -> approximate camera in 15 s, replay 25.6 FPS.
