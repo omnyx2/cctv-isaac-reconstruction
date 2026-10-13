@@ -21,6 +21,8 @@ PYENV_FLAG=/plugins/carb.scripting-python.plugin/pythonFlags/Py_IgnoreEnvironmen
 # Quit without "Would you like to save this stage?": the replay scene is rebuilt every run, and the
 # dialog blocks unattended runs (quit_on_finish) forever.
 NOSAVE_FLAG=/app/file/ignoreUnsavedOnExit=true
+# The VLM console talks to Ollama: start it now, one model at a time (Isaac Sim runs fine without it).
+ollama_up || echo "  (the VLM console will say the VLM is unavailable)"
 cd "$PROJECT"
 exec "$ISAAC_SIM/isaac-sim.sh" --ext-folder exts --enable cctv.dual_tracking --enable cctv.timeline \
   --$PYENV_FLAG --$NOSAVE_FLAG \

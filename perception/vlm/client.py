@@ -102,6 +102,11 @@ class OllamaClient(VLMClient):
             payload["format"] = "json"
         return self._request("/api/generate", payload).get("response", "")
 
+    def unload(self, model: Optional[str] = None):
+        """Free the model's memory on the server now (keep_alive 0) instead of after its idle timeout.
+        Big VLMs share this machine's memory with Isaac Sim: only one should be loaded at a time."""
+        self._request("/api/generate", {"model": model or self.model, "keep_alive": 0}, timeout=30.0)
+
 
 BACKENDS = {"ollama": OllamaClient}
 
