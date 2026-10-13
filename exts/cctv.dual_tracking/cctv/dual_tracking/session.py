@@ -66,6 +66,66 @@ def runnable_configs(project_root: Path) -> List[Path]:
     return configs
 
 
+VIDEO_SUFFIXES = (".mp4", ".avi", ".mkv", ".mov")
+FRAME_SUFFIXES = (".jpg", ".jpeg", ".png")
+SCAN_SKIP = {"cache", "results", "labels", "zips", "downloads"}   # folders that hold no playable video
+SCAN_SKIP_FILES = ("preview.",)   # TUM accident clips: a small preview of the frames next to them
+SCAN_DEPTH = 6
+
+
+def downloaded_videos(project_root: Path) -> List[Path]:
+    """Every video on this machine: video files and folders of frames under <project>/data and
+    the datasets folder (CCTV_DATASETS). A folder with photos is one video (not searched deeper)."""
+    import os
+
+    from cctv_utils.paths import datasets_root
+
+    found, seen = [], set()
+
+    def walk(folder: Path, depth: int):
+        try:
+            entries = sorted(os.scandir(folder), key=lambda e: e.name)
+        except OSError:
+            return
+        subdirs = []
+        for entry in entries:
+            name = entry.name.lower()
+            if entry.is_file():
+                if name.endswith(FRAME_SUFFIXES):
+                    found.append(folder)        # a frame folder: the photos are its frames
+                    return
+                if name.endswith(VIDEO_SUFFIXES) and not name.startswith(SCAN_SKIP_FILES):
+                    found.append(Path(entry.path))
+            elif entry.is_dir() and not name.startswith(".") and name not in SCAN_SKIP:
+                subdirs.append(Path(entry.path))
+        if depth < SCAN_DEPTH:
+            for sub in subdirs:
+                walk(sub, depth + 1)
+
+    for root in (project_root / "data", datasets_root()):
+        key = root.resolve()
+        if key in seen or not root.is_dir():
+            continue
+        seen.add(key)
+        walk(root, 0)
+    unique = {}
+    for path in found:                        # the datasets folder may sit inside data/
+        unique.setdefault(path.resolve(), path)
+    return sorted(unique.values(), key=lambda p: str(p))
+
+
+def configs_by_video(project_root: Path) -> dict:
+    """{resolved video path: config} of the runnable configs."""
+    from cctv_utils.paths import expand
+
+    result = {}
+    for path in runnable_configs(project_root):
+        with open(path, "r", encoding="utf-8") as f:
+            video = Path(expand(yaml.safe_load(f)["video"]["path"]))
+        result.setdefault((video if video.is_absolute() else project_root / video).resolve(), path)
+    return result
+
+
 def config_for_video(video: str, project_root: Path) -> Optional[Path]:
     """The config whose video.path is this video, if any."""
     target = Path(video).resolve()

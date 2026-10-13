@@ -320,6 +320,9 @@ def paint_markings(camera, boundaries, flags, followers, gray: np.ndarray, moved
 
 
 MOTION_SAMPLES = 300          # frames the camera motion is measured on (evenly spread)
+APPROX_HFOV_DEG = 50.0       # --approximate: a typical road CCTV lens (UA-DETRAC 20011: 52.5, 40191: 34.3)
+APPROX_HEIGHT_M = 8.0        # ... and mounting height (7.6 m, 9.3 m)
+APPROX_VP_Y = 0.2            # ... the vanishing point when no estimate had one: centred, this far down the image
 MOTION_ON_PX = 2.0           # camera moved more (max shift): stabilization on in the config - the replay's
                              # perception then estimates the camera motion every frame (perception/stabilizer.py)
 
@@ -629,6 +632,10 @@ def main():
     parser.add_argument("--config", default="", help="also write a runnable scenario config here (CALIBRATED only)")
     parser.add_argument("--allow-tentative", action="store_true",
                         help="write --config for a TENTATIVE camera too (a new video: nothing else to replay it with)")
+    parser.add_argument("--approximate", action="store_true",
+                        help="no camera found: write --config with an APPROXIMATE one anyway (the last estimate's "
+                             "vanishing point, a typical CCTV lens and height) so the video still replays; "
+                             "distances and speeds are then not metric")
     parser.add_argument("--traffic", choices=("on", "off"), default="on",
                         help="the traffic situation chooses the windows and drops of the edge existence "
                              "(world/traffic_logic.py); off: every frame, --drop (test)")
@@ -740,6 +747,21 @@ def main():
                       lane_lines=((logic.ctx.accepted or logic.ctx.pool or [{}])[-1]).get("lane_lines"))
     else:
         result["error"] = "not calibrated: " + "; ".join((logic.ctx.estimate or {}).get("reasons", []) or ["no estimate"])
+        if args.approximate and args.config:
+            from world.context.camera import CameraModel
+
+            vp = (logic.ctx.estimate or {}).get("vanishing_point") or [w / 2, APPROX_VP_Y * h]
+            focal = w / 2 / math.tan(math.radians(APPROX_HFOV_DEG / 2))
+            camera = CameraModel.from_vanishing_point(tuple(vp), focal, (w, h), APPROX_HEIGHT_M)
+            write_config(Path(args.config), video, fps_of(video), camera, [], [], standard,
+                         ["APPROXIMATE camera: no metric calibration from this video (" + result["error"] + ")",
+                          f"vanishing point {vp}, assumed lens {APPROX_HFOV_DEG:.0f} deg, height {APPROX_HEIGHT_M:.0f} m: "
+                          "the replay runs, distances and speeds are not metric",
+                          f"video {video}"])
+            result["approximate"] = True
+            print(f"APPROXIMATE camera (not metric): vanishing point {vp}, lens {APPROX_HFOV_DEG:.0f} deg, "
+                  f"height {APPROX_HEIGHT_M:.0f} m")
+            print(f"config written: {args.config}")
     markings, drawn = [], []
     if cam:                                                                  # the paint on the road
         from world.camera import WorldCamera
@@ -796,8 +818,12 @@ def main():
         cv2.imwrite(str(out / "road.png"), last["road"] * 255)
         cv2.imwrite(str(out / "calibration.png"), draw(frame, last["camera"], last["vp"], last["lines"], last["boundaries"],
                                                         last["flags"], last["followers"], last["standard"]))
-    print(f"{mode}: {result.get('focal_px')} px, {result.get('height_m')} m in {time.time() - start:.0f} s -> {out}")
-    return 0 if cam else 2
+    if result.get("approximate"):                                            # the window shows the last line
+        print(f"APPROXIMATE camera, not metric ({time.time() - start:.0f} s): the video replays with an assumed lens "
+              f"and height")
+    else:
+        print(f"{mode}: {result.get('focal_px')} px, {result.get('height_m')} m in {time.time() - start:.0f} s -> {out}")
+    return 0 if cam or result.get("approximate") else 2
 
 
 if __name__ == "__main__":

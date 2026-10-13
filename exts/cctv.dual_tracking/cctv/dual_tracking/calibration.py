@@ -124,7 +124,9 @@ class AutoCalibration(BackgroundTool):
         self.camera_id = camera_id_for(video)
         self.config_path = Path(project_root) / "config" / f"auto_{video_key(video)}.yaml"
         out = Path(project_root) / "data" / "results" / "scene_logic" / video_key(video)
+        # --approximate: a video the logic cannot calibrate still replays (camera assumed, not metric)
         args = ["--video", video, "--seconds", seconds, "--out", out, "--config", self.config_path, "--allow-tentative",
+                "--approximate",
                 "--log-prefix", self.PREFIX, "--standard", *(standards or ["any"])]
         super().__init__(project_root, "scene_calibration.py", args)
 
