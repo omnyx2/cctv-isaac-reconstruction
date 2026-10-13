@@ -94,6 +94,8 @@ class VLMController:
     def set(self, key: str, value):
         if self.settings.get(key) == value:
             return
+        if key == "model":
+            self._unload(self.settings.get("model"))   # one VLM in memory at a time
         self.settings[key] = value
         if self.analyzer is None:
             return
@@ -236,9 +238,29 @@ class VLMController:
                 f"mean {fmt(t['mean_s'])}  p95 {fmt(t['p95_s'])}  |  {t['per_min']}/min  "
                 f"{'BUSY' if t['busy'] else 'idle'}{' +1 waiting' if t['pending'] else ''}")
 
+    def _unload(self, model: Optional[str], wait_s: float = 0.0):
+        """Ask the server to free `model` now, in the background (the UI must not wait on the server);
+        wait_s: wait up to that long for it (at shutdown, before the process ends)."""
+        if not model or self.analyzer is None:
+            return
+        client = self._client()
+        if not hasattr(client, "unload"):
+            return
+
+        def run():
+            try:
+                client.unload(model)
+            except Exception as e:
+                self.log(f"[CCTV VLM] unload {model}: {type(e).__name__}: {e}")
+        thread = threading.Thread(target=run, name="vlm-unload", daemon=True)
+        thread.start()
+        if wait_s:
+            thread.join(wait_s)
+
     def shutdown(self):
         self.cancel_scan()
         if self.analyzer is not None:
+            self._unload(self.settings.get("model"), wait_s=5.0)   # Isaac Sim closing: give the memory back
             self.analyzer.stop()
             self.analyzer = None
         self.periodic = False

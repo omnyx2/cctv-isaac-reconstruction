@@ -173,16 +173,18 @@ TUM is five ~9 GB zips; `tum_download.py` uses the same Range trick and fetches 
 Add `--labels` to also get the dataset's 3D labels (only the evaluation tools need them).
 The share answers each request slowly, so 32 photos are fetched in parallel: a scene takes about 1–3 minutes.
 
-> 🖥️ **On our DGX Spark: use the shared folder instead (faster).** Every pod sees `/mnt/public`
-> (`~/Public`). The videos and the VLMs were downloaded there once, so copy them instead of downloading:
+> 🖥️ **On our DGX Spark: same commands, from the shared folder.** Every pod sees `/mnt/public`
+> (`~/Public`). The videos and the VLMs were downloaded there once, so `./03_download_data.sh` and
+> `./07_vlm_setup.sh` find them there and copy instead of downloading (seconds, not minutes):
 > ```bash
-> ./03_spark_public.sh        # videos + YOLO models + the default VLM (then Step 7 skips the 19 GB download)
-> ./03_spark_public.sh all    # ... and every VLM in the list below (~55 GB)
-> ./09_more_scenes.sh         # the TUM accident clips (instead of --tum-scenes, see More hands-on)
+> ./03_download_data.sh                          # the lab's two videos
+> ./03_download_data.sh MVI_39761 40131 39031    # any of the 80 shared videos (60 train + 20 test)
+> ./03_download_data.sh --detrac-all             # all 80 (~8 GB, about a second)
+> ./09_more_scenes.sh                            # the TUM accident clips (instead of --tum-scenes, see More hands-on)
 > ```
-> 🧑‍🏫 Filling the shared folder (once, by the teacher): `./03_spark_public.sh fill` → `/mnt/public/cctv_lab`
-> (all of UA-DETRAC, the 5 TUM Traffic Accid3nD zips, the 5 VLMs: ~80 GB), then `./09_more_scenes.sh fill`.
-> Other computers keep using `03_download_data.sh` and `07_vlm_setup.sh` as usual.
+> 🧑‍🏫 Filling the shared folder (once, by the teacher): `./03_spark_public.sh fill` → `/mnt/public/CCTV_recon_dL`
+> (UA-DETRAC packed as one .tar per video, the 5 TUM Traffic Accid3nD zips, the 5 VLMs), then `./09_more_scenes.sh fill`.
+> Other computers run the same two scripts and download from the internet as usual.
 
 ---
 
@@ -566,7 +568,7 @@ Each accident clip comes with `scene.yaml` (what happened, the moment of contact
 > 🧑‍🏫 Measured here (2026-10-13): `tum_r09_s01_south50` 872 frames at **25 FPS**, 31 lane-paint pieces found,
 > exit 0; the full recording `auto_r09_s10_s040_camera_basler_north_50mm` 3,000 frames, exit 0.
 
-> 🧑‍🏫 **Teacher, once:** `./03_spark_public.sh fill` (all datasets + 5 VLMs → `/mnt/public/cctv_lab`),
+> 🧑‍🏫 **Teacher, once:** `./03_spark_public.sh fill` (all datasets + 5 VLMs → `/mnt/public/CCTV_recon_dL`),
 > then `./09_more_scenes.sh fill` (cuts the 4 accident clips out of the zips, ~3 min).
 > TUM stays as 5 zips in the shared folder: it writes small files slowly (~30 photos/s; unpacking all 223,000
 > would take 2 hours), so `09_more_scenes.sh` unpacks only the cameras asked for on each computer's own disk (~400 photos/s).
